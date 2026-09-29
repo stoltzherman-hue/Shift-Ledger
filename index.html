@@ -3,19 +3,21 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>ShiftLedger</title>
-<meta name="theme-color" content="#0E1413" />
+<title>SlipSync Shift</title>
+<meta name="theme-color" content="#0C0C0A" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="ShiftLedger" />
+<meta name="apple-mobile-web-app-title" content="SlipSync Shift" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
 <style>
   :root{
-    --ink:#0E1413; --panel:#16201E; --panelAlt:#1E2B28; --line:#26332F;
-    --green:#3DDC97; --greenDim:#1F4A3A; --amber:#F5B841; --amberDim:#4A3C1B;
-    --text:#EDF3F0; --muted:#8A9B95; --faint:#5C6B66; --danger:#FF6B6B;
-    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
-    --sans:-apple-system,system-ui,'Segoe UI',Roboto,sans-serif;
+    --ink:#0C0C0A; --panel:#131310; --panelAlt:#1A1A16; --line:#272720;
+    --green:#FF6B1A; --greenDim:rgba(255,107,26,0.12); --amber:#6EE7B7; --amberDim:rgba(110,231,183,0.12);
+    --text:#F5F2EB; --muted:#8A8570; --faint:#3A3830; --danger:#FF5757;
+    --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace;
+    --sans:'Space Grotesk',system-ui,sans-serif;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--ink);color:var(--text);font-family:var(--sans)}
@@ -94,12 +96,12 @@
 
 <div id="paywallScreen" style="display:none;position:fixed;inset:0;z-index:300;background:var(--ink);flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center">
   <div style="font-size:48px;margin-bottom:16px">⚡</div>
-  <div style="font-size:26px;font-weight:800;margin-bottom:8px">ShiftLedger</div>
-  <div style="color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:28px">Cash-Up Clarity. Tip Intelligence. Shift Insights.<br>Built for waiters who take their shift seriously.</div>
+  <div style="font-size:32px;font-weight:700;margin-bottom:8px;letter-spacing:-1px">Slip<span style="color:var(--green)">Sync</span> Shift</div>
+  <div style="color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:28px">The shift doesn't lie.<br>Built for waiters who take their shift seriously.</div>
   <div style="background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px;width:100%;max-width:360px;margin-bottom:20px">
     <div style="font-size:32px;font-weight:800;color:var(--green)">R49<span style="font-size:16px;font-weight:400;color:var(--muted)">/month</span></div>
     <div style="color:var(--muted);font-size:13px;margin:8px 0 16px;line-height:1.5">Unlimited shifts · Tip tracking · Cash-up reports · Shift summary PDF · Slip scanning</div>
-    <button onclick="paywallSubscribe()" style="width:100%;height:52px;border:none;border-radius:14px;background:var(--green);color:var(--ink);font-size:16px;font-weight:800;margin-bottom:10px">Subscribe — R49/month</button>
+    <button onclick="paywallSubscribe()" style="width:100%;height:52px;border:none;border-radius:14px;background:var(--green);color:var(--ink);font-size:16px;font-weight:800;margin-bottom:10px">⚡ Start my shift — R49/month</button>
     <div style="color:var(--faint);font-size:12px">Secure payment via PayFast · Cancel anytime</div>
   </div>
   <div style="color:var(--muted);font-size:13px;margin-bottom:12px">Already subscribed? Enter your PIN:</div>
@@ -113,7 +115,7 @@
 
 <div id="nameModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.85);align-items:center;justify-content:center;padding:24px">
   <div style="background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px;width:100%;max-width:380px">
-    <div style="font-size:24px;font-weight:800;margin-bottom:6px">Welcome to ShiftLedger 👋</div>
+    <div style="font-size:24px;font-weight:800;margin-bottom:6px">Welcome to SlipSync Shift ⚡</div>
     <div style="color:var(--muted);font-size:14px;margin-bottom:20px">Enter your name once — it appears on every slip and your shift summary.</div>
     <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase">Your name</div>
     <input id="nameInput" style="font-family:var(--mono);font-size:20px;color:var(--text);background:var(--panelAlt);border:1px solid var(--line);border-radius:14px;padding:14px;width:100%;margin-top:8px;box-sizing:border-box" placeholder="e.g. Sipho Dlamini" />
@@ -240,7 +242,7 @@
       <input id="curSym" maxlength="3" oninput="setCurrency()" />
     </div>
     <div class="card" style="margin-bottom:16px;border-color:var(--green)">
-      <div style="font-size:16px;font-weight:800;margin-bottom:6px">✅ ShiftLedger Pro — Active</div>
+      <div style="font-size:16px;font-weight:800;margin-bottom:6px">✅ SlipSync Shift Pro — Active</div>
       <div style="color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:10px">Your subscription is active. Billed R49/month via PayFast.</div>
       <button class="btn danger" onclick="deactivate()" style="font-size:13px;height:40px">Deactivate this device</button>
     </div>
