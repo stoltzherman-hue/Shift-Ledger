@@ -1,21 +1,14 @@
 /**
- * Owner-only PIN viewer. Go to /api/admin-pins to see all subscribers.
- * No auth — keep this URL private. Add ?deactivate=PIN to deactivate.
+ * Owner-only subscriber list. Requires ?key=<ADMIN_KEY> (set ADMIN_KEY in Vercel).
+ * ?key=...&deactivate=123456 deactivates a PIN.
  */
-import fs from 'fs';
-const PIN_FILE='/tmp/sl_pins.json';
-function pins(){try{return JSON.parse(fs.readFileSync(PIN_FILE,'utf8'));}catch(e){return {}}}
-function savePins(p){try{fs.writeFileSync(PIN_FILE,JSON.stringify(p,null,2),'utf8');}catch(e){}}
-
-export default function handler(req,res){
-  const p=pins();
-  if(req.query&&req.query.deactivate){
-    const pin=req.query.deactivate;
-    const entry=Object.entries(p).find(([,v])=>v.pin===pin);
-    if(entry){p[entry[0]].active=false;savePins(p);}
-    return res.status(200).json({ok:true,deactivated:pin});
-  }
-  const list=Object.values(p).map(x=>({name:x.name,email:x.email,pin:x.pin,active:x.active,created:x.created}));
-  res.setHeader('Content-Type','application/json');
-  return res.status(200).json({subscribers:list,total:list.length,active:list.filter(x=>x.active).length});
+import { listPins, getPin, putPin } from './_store.js';
+export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  const key = process.env.ADMIN_KEY;
+  if (!key || (req.query || {}).key !== key) return res.status(401).json({ error: 'unauthorised' });
+  const d = (req.query || {}).deactivate;
+  if (d) { const r = await getPin(d); if (r) { r.active = false; await putPin(d, r); } return res.json({ ok: true, deactivated: d }); }
+  const list = (await listPins()).filter(x => /^\d{6}$/.test(x.pin));
+  return res.json({ total: list.length, active: list.filter(x => x.active).length, subscribers: list.map(({ pin, name, email, plan, mods, billing, active, paidAt }) => ({ pin, name, email, plan, mods, billing, active, paidAt })) });
 }

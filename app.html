@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SlipSync — Home, Curator, Road</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<style>
+:root{--bg:#0C0C0A;--panel:#16160f;--line:#2a2a22;--ink:#F4F1E8;--mute:#8d8a7c;--fire:#FF6B1A;--ok:#7BD88F;--warn:#FFC53D;--bad:#FF4D4D;--acc:var(--fire);
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root[data-mod=home]{--acc:#FF6B1A}:root[data-mod=cur]{--acc:#F2B84B}:root[data-mod=road]{--acc:#4FD1C5}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--bg);color:var(--ink);font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{max-width:560px;margin:0 auto;padding:0 18px 110px;min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}
+.num{font-family:'Space Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+header{display:flex;align-items:center;justify-content:space-between;padding:18px 0 10px}
+.logo{font-weight:700;font-size:20px;letter-spacing:-.02em}.logo b{color:var(--fire)}
+.mon{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--mute)}
+.mon button{background:none;border:1px solid var(--line);width:30px;height:30px;border-radius:50%;cursor:pointer}
+.mods{display:flex;gap:6px;margin:6px 0 22px;border-bottom:1px solid var(--line)}
+.mods button{flex:1;background:none;border:0;padding:12px 4px;color:var(--mute);font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.mods button[aria-selected=true]{color:var(--ink);border-color:var(--acc)}
+.hero{padding:6px 0 22px}
+.hero small{color:var(--mute);font-size:14px}
+.big{font-size:clamp(44px,13vw,64px);font-weight:700;letter-spacing:-.04em;line-height:1;margin:6px 0 10px}
+.big.neg{color:var(--bad)}
+.track{height:10px;background:var(--line);border-radius:6px;position:relative;overflow:hidden}
+.track i{position:absolute;inset:0 auto 0 0;background:var(--acc);border-radius:6px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.track .pace{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.7}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:18px 0}
+.stats div{background:var(--bg);padding:12px}
+.stats span{display:block;font-size:12px;color:var(--mute);margin-bottom:4px}
+.stats b{font-size:15px}
+h2{font-size:17px;font-weight:700;margin:28px 0 12px;letter-spacing:-.01em}
+.ins{border-left:3px solid var(--acc);padding:4px 0 4px 14px;margin:0 0 12px;line-height:1.45;font-size:15px}
+.ins.bad{border-color:var(--bad)}.ins.warn{border-color:var(--warn)}.ins.ok{border-color:var(--ok)}
+.env{padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.env .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;gap:8px}
+.env .nm{font-weight:500}.env .tag{font-size:11px;color:var(--mute);border:1px solid var(--line);border-radius:10px;padding:1px 7px;margin-left:6px}
+.env .left{font-size:13px;color:var(--mute)}
+.env .track{height:6px}
+.split{display:flex;height:34px;border-radius:8px;overflow:hidden;margin:6px 0 8px}
+.split div{display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:700;color:#0C0C0A;white-space:nowrap;overflow:hidden}
+.legend{display:flex;gap:16px;font-size:13px;color:var(--mute)}
+.tx{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.tx .th{width:42px;height:42px;border-radius:8px;background:var(--panel);flex:none;object-fit:cover;display:grid;place-items:center;font-size:18px}
+.tx .mid{flex:1;min-width:0}.tx .mid div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx .sub{font-size:12px;color:var(--mute)}
+.tx .del{background:none;border:0;color:var(--mute);cursor:pointer;padding:6px}
+.empty{color:var(--mute);padding:18px 0;line-height:1.5}
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--acc);color:#0C0C0A;border:0;border-radius:40px;padding:16px 30px;font-weight:700;font-size:16px;cursor:pointer;box-shadow:0 8px 30px -8px var(--acc);z-index:5}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.btn{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px;cursor:pointer;font-weight:500;font-size:14px}
+.btn.pri{background:var(--acc);color:#0C0C0A;border-color:var(--acc);font-weight:700}
+.btn:focus-visible,.mods button:focus-visible,.fab:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:18px 18px 0 0;width:100%;max-width:560px;margin:auto auto 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));max-height:92vh}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h3{font-size:19px;margin-bottom:14px}
+label{display:block;font-size:13px;color:var(--mute);margin:12px 0 5px}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:16px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+.amt{font-size:32px;font-family:'Space Mono',monospace;font-weight:700}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;background:none;border:0;padding:11px;cursor:pointer;color:var(--mute)}
+.seg button.on{background:var(--acc);color:#0C0C0A;font-weight:700}
+.hint{font-size:12px;color:var(--mute);margin-top:6px;line-height:1.4}
+.toast{position:fixed;top:calc(16px + env(safe-area-inset-top,0px));left:50%;transform:translate(-50%,-80px);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:30px;font-weight:700;transition:transform .3s;z-index:20}
+.toast.on{transform:translate(-50%,0)}
+.catrow{display:grid;grid-template-columns:1fr 110px 92px 30px;gap:6px;align-items:center;margin-bottom:6px}
+.catrow input,.catrow select{padding:9px;font-size:14px}
+
+.trial{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:0 0 18px;font-size:14px}
+.trial b{color:var(--fire)}.trial button{background:none;border:0;color:var(--ink);text-decoration:underline;cursor:pointer;font-weight:700}
+.pick{display:block;width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:0 0 10px;cursor:pointer;position:relative}
+.pick[aria-pressed=true]{border-color:var(--fire);box-shadow:inset 0 0 0 1px var(--fire)}
+.pick strong{display:block;font-size:17px}.pick span{font-size:13px;color:var(--mute);line-height:1.4;display:block;margin-top:3px}
+.pick::after{content:'';position:absolute;right:16px;top:16px;width:18px;height:18px;border-radius:50%;border:2px solid var(--line)}
+.pick[aria-pressed=true]::after{background:var(--fire);border-color:var(--fire)}
+.price{display:flex;align-items:baseline;gap:8px;margin:16px 0 4px}.price .big{font-size:48px;margin:0}
+.save{color:var(--ok);font-size:14px;font-weight:700}
+.nudge{border-left:3px solid var(--fire);padding:6px 12px;margin:10px 0;font-size:14px;line-height:1.45}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:14px 0;font-size:13px}
+.tiers div{background:var(--panel);padding:10px;text-align:center}.tiers div.on{background:var(--fire);color:#0C0C0A;font-weight:700}
+.shiftcard{padding:30px 0}.shiftcard p{color:var(--mute);line-height:1.5;margin:10px 0 18px}
+@media (prefers-reduced-motion:reduce){.track i,.toast{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Slip<b>Sync</b></div>
+  <div class="mon"><button id="mPrev" aria-label="Previous month">‹</button><span id="mLbl" class="num"></span><button id="mNext" aria-label="Next month">›</button></div>
+</header>
+<nav class="mods" role="tablist">
+  <button role="tab" data-m="shift">Shift</button>
+  <button role="tab" data-m="home">Home</button>
+  <button role="tab" data-m="cur">Curator</button>
+  <button role="tab" data-m="road">Road</button>
+</nav>
+<main id="view"></main>
+<button class="fab" id="fab">+ Add slip</button>
+
+<dialog id="dlg"><form method="dialog" id="dlgBody"></form></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ STORE ============ */
+const KEY='slipsync.suite.v1', RATE_KM=4.95;
+const DEF={
+ home:{cfg:{income:0,members:'Me, Partner'},cats:[
+  ['Groceries',6000,'must'],['Fuel',3000,'must'],['Utilities & data',2500,'must'],['School & kids',2000,'must'],['Medical',800,'must'],['Savings',1500,'must'],
+  ['Takeaways',800,'nice'],['Entertainment',600,'nice'],['Clothing',700,'nice'],['Gifts & other',400,'nice']],tx:[]},
+ cur:{cfg:{client:'',email:'',wa:'',float:10000,me:''},cats:[
+  ['Groceries',4000,'must'],['Household supplies',1500,'must'],['Pharmacy',800,'must'],['Maintenance',1500,'must'],['Garden & pool',700,'must'],['Special requests',1000,'nice']],tx:[]},
+ road:{cfg:{mode:'allowance',allowance:6000,rate:RATE_KM,name:'',company:'',mgr:'',email:'',wa:'',home:''},tx:[],trips:[]}
+};
+function mkCats(a){return a.map(([n,l,t],i)=>({id:'c'+i+Date.now().toString(36),name:n,limit:l,type:t}))}
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S){S=JSON.parse(JSON.stringify(DEF));S.home.cats=mkCats(DEF.home.cats);S.cur.cats=mkCats(DEF.cur.cats)}
+S.ui=S.ui||{mod:'home'};
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Storage full — export and clear old slips')}}
+
+/* ============ HELPERS ============ */
+const $=s=>document.querySelector(s);
+const R=n=>'R\u00a0'+(Math.round((+n||0)*100)/100).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const R0=n=>'R\u00a0'+Math.round(+n||0).toLocaleString('en-ZA');
+const uid=()=>Math.random().toString(36).slice(2,10);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let MONTH=new Date().toISOString().slice(0,7);
+const mLabel=m=>new Date(m+'-01').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+const inMonth=(d,m=MONTH)=>d&&d.slice(0,7)===m;
+const shiftM=(m,n)=>{const d=new Date(m+'-01');d.setMonth(d.getMonth()+n);return d.toISOString().slice(0,7)};
+function progress(){const now=new Date(),cur=now.toISOString().slice(0,7);const dim=new Date(+MONTH.slice(0,4),+MONTH.slice(5),0).getDate();
+ if(MONTH<cur)return{p:1,day:dim,dim,left:0};if(MONTH>cur)return{p:0,day:0,dim,left:dim};
+ const day=now.getDate();return{p:day/dim,day,dim,left:dim-day+1}}
+function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('on');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('on'),2200)}
+
+/* Smart store → category guesses (SA retailers) */
+const GUESS=[
+ [/engen|shell|\bbp\b|sasol|caltex|total ?energies|astron|fuel|petrol|diesel/i,'Fuel'],
+ [/checkers|pick ?n ?pay|pnp|woolworths|woolies|spar|shoprite|food ?lover|boxer|makro|usave|ok foods/i,'Groceries'],
+ [/nando|kfc|steers|debonairs|mcdonald|burger|uber ?eats|mr ?d|wimpy|spur|romans|ocean basket|pizza/i,'Takeaways'],
+ [/dis-?chem|clicks|pharm|med|doctor|dr\b|dentist/i,'Medical|Pharmacy'],
+ [/eskom|prepaid|electric|water|municip|vodacom|mtn|telkom|cell ?c|rain|fibre|afrihost|dstv|netflix|showmax/i,'Utilities & data'],
+ [/builders|leroy|cashbuild|hardware|plumb|electrician/i,'Maintenance'],
+ [/mr ?price|pep|ackermans|edgars|truworths|foschini|h&m|cotton on|jet\b/i,'Clothing'],
+ [/ster|nu metro|movie|cinema|ticket/i,'Entertainment'],
+ [/sanral|toll|e-?toll|plaza/i,'Tolls'],[/park/i,'Parking'],
+ [/city lodge|protea|hotel|lodge|airbnb|guest ?house|b&b/i,'Accommodation']
+];
+function guessCat(store,cats){for(const [re,n] of GUESS){if(re.test(store)){for(const opt of n.split('|')){const c=cats.find(c=>c.name.toLowerCase()===opt.toLowerCase());if(c)return c}}}return null}
+
+/* Image capture → compressed dataURL (keeps localStorage lean) */
+function readImg(file){return new Promise(res=>{if(!file)return res(null);const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,900/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.6))};im.src=fr.result};fr.readAsDataURL(file)})}
+
+/* ============ BUDGET ENGINE (Home + Curator) ============ */
+function budgetCalc(mod,m=MONTH){
+ const D=S[mod],tx=D.tx.filter(t=>inMonth(t.date,m));
+ const total=mod==='cur'?(+D.cfg.float||0):D.cats.reduce((a,c)=>a+(+c.limit||0),0);
+ const byCat={};D.cats.forEach(c=>byCat[c.id]=0);tx.forEach(t=>byCat[t.cat]=(byCat[t.cat]||0)+ +t.amt);
+ const spent=tx.reduce((a,t)=>a+ +t.amt,0);
+ const must=tx.filter(t=>t.type!=='nice').reduce((a,t)=>a+ +t.amt,0);
+ return{tx,total,spent,left:total-spent,byCat,must,nice:spent-must}
+}
+function budgetInsights(mod){
+ const D=S[mod],b=budgetCalc(mod),pr=progress(),out=[];
+ if(!b.tx.length){out.push(['','No slips yet this month. Add your first one and the insights switch on.']);return out}
+ if(pr.p>0&&pr.p<1){
+  const proj=b.spent/pr.p;
+  if(proj>b.total&&b.total>0)out.push(['bad',`At this pace you'll spend <b class="num">${R0(proj)}</b> by month-end — <b class="num">${R0(proj-b.total)}</b> over budget.`]);
+  else if(b.total>0)out.push(['ok',`On track. Projected month-end spend is <b class="num">${R0(proj)}</b>, leaving about <b class="num">${R0(b.total-proj)}</b>.`]);
+  if(b.left>0&&pr.left>0)out.push(['',`You can spend <b class="num">${R0(b.left/pr.left)}</b> a day for the next ${pr.left} days and still land on budget.`]);
+ }
+ const hot=D.cats.map(c=>{const s=b.byCat[c.id]||0;return{c,s,proj:pr.p>0?s/Math.max(pr.p,.05):s}})
+  .filter(x=>x.c.limit>0&&(x.s>x.c.limit||(pr.p<1&&x.proj>x.c.limit*1.1)))
+  .sort((a,b2)=>(b2.proj-b2.c.limit)-(a.proj-a.c.limit)).slice(0,2);
+ hot.forEach(x=>out.push(x.s>x.c.limit?['bad',`${esc(x.c.name)} is <b class="num">${R0(x.s-x.c.limit)}</b> over its limit.`]:['warn',`${esc(x.c.name)} is running hot — on pace for <b class="num">${R0(x.proj)}</b> against a <b class="num">${R0(x.c.limit)}</b> limit.`]));
+ if(b.spent>0){const ns=b.nice/b.spent;if(ns>.25)out.push(['warn',`Nice-to-haves are ${Math.round(ns*100)}% of spending. Trimming them by a third frees up <b class="num">${R0(b.nice/3)}</b>.`]);}
+ // vs last month, same point in month
+ const lm=shiftM(MONTH,-1),lb=budgetCalc(mod,lm);
+ if(lb.spent>0){let best=null;D.cats.forEach(c=>{const d=(b.byCat[c.id]||0)-(lb.byCat[c.id]||0);if(!best||d>best.d)best={c,d}});
+  if(best&&best.d>200)out.push(['',`${esc(best.c.name)} is up <b class="num">${R0(best.d)}</b> on last month.`])}
+ // top store
+ const st={};b.tx.forEach(t=>{if(t.store){const k=t.store.trim().toLowerCase();st[k]=st[k]||{n:t.store,v:0,c:0};st[k].v+= +t.amt;st[k].c++}});
+ const top=Object.values(st).sort((a,b2)=>b2.v-a.v)[0];if(top&&top.c>1)out.push(['',`${esc(top.n)} is your biggest spend: ${top.c} visits, <b class="num">${R0(top.v)}</b>.`]);
+ // fuel intelligence
+ const fuel=b.tx.filter(t=>+t.litres>0);if(fuel.length){const L=fuel.reduce((a,t)=>a+ +t.litres,0),V=fuel.reduce((a,t)=>a+ +t.amt,0);out.push(['',`Fuel: <b class="num">${L.toFixed(1)} L</b> at an average <b class="num">${R(V/L)}</b> per litre.`])}
+ const noSlip=b.tx.filter(t=>!t.img).length;if(mod==='cur'&&noSlip)out.push(['warn',`${noSlip} purchase${noSlip>1?'s have':' has'} no slip photo. Add them before sending the statement.`]);
+ return out
+}
+
+/* ============ ROAD ENGINE ============ */
+function roadCalc(m=MONTH){
+ const D=S.road,tx=D.tx.filter(t=>inMonth(t.date,m)),trips=D.trips.filter(t=>inMonth(t.date,m));
+ const km=trips.reduce((a,t)=>a+ +t.km,0),kmVal=km*(+D.cfg.rate||RATE_KM);
+ const spent=tx.reduce((a,t)=>a+ +t.amt,0),claim=tx.filter(t=>t.reimb).reduce((a,t)=>a+ +t.amt,0);
+ const allow=+D.cfg.allowance||0,used=D.cfg.mode==='allowance'?spent:claim;
+ const byCat={};tx.forEach(t=>byCat[t.cat]=(byCat[t.cat]||0)+ +t.amt);
+ return{tx,trips,km,kmVal,spent,claim,allow,used,left:allow-used,byCat,claimTotal:claim+(D.cfg.mode==='reimb'?kmVal:0)}
+}
+function roadInsights(){
+ const D=S.road,r=roadCalc(),pr=progress(),out=[];
+ if(!r.tx.length&&!r.trips.length){out.push(['','Log a trip or add a slip. Every business kilometre you log protects your travel-allowance claim at tax time.']);return out}
+ if(D.cfg.mode==='allowance'&&r.allow>0&&pr.p>0&&pr.p<1){const proj=r.used/pr.p;
+  out.push(proj>r.allow?['bad',`On pace to spend <b class="num">${R0(proj)}</b> — <b class="num">${R0(proj-r.allow)}</b> more than your allowance.`]:['ok',`On pace for <b class="num">${R0(proj)}</b> of your <b class="num">${R0(r.allow)}</b> allowance.`])}
+ if(r.km>0)out.push(['',`${Math.round(r.km).toLocaleString('en-ZA')} business km this month, worth <b class="num">${R0(r.kmVal)}</b> at the SARS rate of ${R(D.cfg.rate)}/km.`]);
+ const bad=r.trips.filter(t=>!t.purpose||!t.to).length;if(bad)out.push(['warn',`${bad} trip${bad>1?'s are':' is'} missing a destination or business reason. SARS rejects logbook lines without them.`]);
+ const ns=r.tx.filter(t=>!t.img).length;if(ns)out.push(['warn',`${ns} expense${ns>1?'s have':' has'} no slip. Finance will usually refuse those.`]);
+ if(D.cfg.mode==='reimb'&&r.claimTotal>0)out.push(['',`Claim ready: <b class="num">${R(r.claimTotal)}</b> (expenses ${R0(r.claim)} + kilometres ${R0(r.kmVal)}).`]);
+ const top=Object.entries(r.byCat).sort((a,b)=>b[1]-a[1])[0];if(top&&r.spent>0)out.push(['',`${esc(top[0])} is ${Math.round(top[1]/r.spent*100)}% of road spend.`]);
+ return out
+}
+const ROADCATS=['Fuel','Tolls','Parking','Meals','Accommodation','Client entertainment','Car wash & maintenance','Data & airtime','Other'];
+
+
+/* ============ ACCOUNT: modules, trial, plans ============ */
+const MODS={shift:['Shift','Waiters & bartenders: slips, tips and cash-ups.'],home:['Home','Family budget with envelopes, must-haves and a daily spend guide.'],cur:['Curator','Buy for a client from a float, then send the statement on WhatsApp or email.'],road:['Road','Reps: allowance tracker, SARS logbook and claim packs.']};
+const TRIAL_DAYS=14,PRICE={1:49,2:79,all:99};
+S.acct=S.acct||{picked:[],trialStart:null,plan:null,mods:[],annual:false};
+const A=S.acct;
+function trialLeft(){if(!A.trialStart)return 0;return Math.max(0,TRIAL_DAYS-Math.floor((Date.now()-A.trialStart)/864e5))}
+function access(){if(A.plan)return A.mods;if(trialLeft()>0)return Object.keys(MODS);return[]}
+function planFor(n){return n>=3?'all':n}
+function priceFor(n,annual){const p=PRICE[planFor(n)]||0;return annual?p*10:p}
+function onboard(){
+ let sel=new Set(A.picked.length?A.picked:[]);
+ open(`<h3>What do you need SlipSync for?</h3><p class="hint" style="margin:-6px 0 14px">Pick everything that fits. You can change it later.</p>
+ ${Object.entries(MODS).map(([k,[n,d]])=>`<button type="button" class="pick" data-k="${k}" aria-pressed="${sel.has(k)}"><strong>${n}</strong><span>${d}</span></button>`).join('')}
+ <p class="nudge">Your first 14 days unlock <b>all four modules</b> free. No card needed.</p>
+ <div class="btns"><button class="btn pri" style="flex:1">Start my free 14 days</button></div><div class="btns"><button type="button" class="btn" id="obPin" style="flex:1">I already have a PIN</button></div>`,()=>{
+  if(!sel.size){toast('Pick at least one');return false}
+  A.picked=[...sel];A.trialStart=A.trialStart||Date.now();S.ui.mod=A.picked[0]==='shift'?(A.picked[1]||'home'):A.picked[0];toast('Trial started — 14 days of everything')});
+ body.onclick=e=>{if(e.target.id==='obPin'){dlg.close();return pinDialog()}const b=e.target.closest('.pick');if(!b)return;const k=b.dataset.k;sel.has(k)?sel.delete(k):sel.add(k);b.setAttribute('aria-pressed',sel.has(k))};
+}
+function paywall(){
+ let sel=new Set(A.mods.length?A.mods:A.picked),annual=A.annual;
+ const draw=()=>{const n=sel.size,plan=planFor(n),p=priceFor(n,annual),full=n*49*(annual?10:1);
+  body.querySelector('#pw').innerHTML=`<div class="tiers"><div class="${plan===1?'on':''}">1 module<br>R49</div><div class="${plan===2?'on':''}">2 modules<br>R79</div><div class="${plan==='all'?'on':''}">All-Access<br>R99</div></div>
+  ${n?`<div class="price"><span class="big num">R${p}</span><span>/${annual?'year':'month'}</span></div>${full>p?`<p class="save">You save R${full-p} ${annual?'a year':'a month'}</p>`:''}`:'<p class="empty">Pick at least one module.</p>'}
+  ${n===2?`<p class="nudge">For R20 more you get all four. Most people take All-Access.</p>`:''}${n===3?`<p class="nudge">Three modules costs the same as all four, so we’ve given you All-Access.</p>`:''}`};
+ const expired=!A.plan&&trialLeft()===0;
+ open(`<h3>${expired?'Your free trial has ended':'Choose your plan'}</h3>${expired?'<p class="hint" style="margin:-6px 0 12px">Your slips and history are safe on this phone. Pick a plan to carry on.</p>':''}
+ ${Object.entries(MODS).map(([k,[n,d]])=>`<button type="button" class="pick" data-k="${k}" aria-pressed="${sel.has(k)}"><strong>${n}</strong><span>${d}</span></button>`).join('')}
+ <label>Billing</label>${segHTML('bill',[['m','Monthly'],['y','Yearly — 2 months free']],annual?'y':'m')}
+ <div id="pw"></div>
+ <div class="btns"><button class="btn pri" style="flex:1">Continue to PayFast</button>${expired?'':'<button class="btn" value="cancel">Not now</button>'}</div>
+ <p class="hint">Secure payment via PayFast. Your PIN arrives by email from hello@slipsync.africa.</p><div class="btns"><button type="button" class="btn" id="havePin" style="flex:1">I already have a PIN</button></div>`,()=>{
+  const n=sel.size;if(!n){toast('Pick at least one module');return false}
+  const plan=planFor(n),mods=plan==='all'?Object.keys(MODS):[...sel];
+  const url='/api/subscribe?modules='+mods.join(',')+'&billing='+(annual?'annual':'monthly')+'&name='+encodeURIComponent(A.name||S.road.cfg.name||S.cur.cfg.me||'SlipSync user');
+  A.annual=annual;save();location.href=url;return false});
+ draw();
+ $('#havePin').onclick=()=>{dlg.close();pinDialog()};
+ body.onclick=e=>{const b=e.target.closest('.pick');if(!b)return;const k=b.dataset.k;sel.has(k)?sel.delete(k):sel.add(k);b.setAttribute('aria-pressed',sel.has(k));draw()};
+ body.querySelector('[data-seg=bill]').addEventListener('change',e=>{annual=e.currentTarget.querySelector('input').value==='y';draw()});
+ dlg.oncancel=e=>{if(expired)e.preventDefault()};
+}
+
+const SHIFT_PIN='shiftledger.pin.v1';
+// Existing Shift subscribers (pre-suite) keep full access as a thank-you
+try{if(!A.plan&&localStorage.getItem(SHIFT_PIN)==='ACTIVE'&&!A.trialStart){A.plan='all';A.mods=Object.keys(MODS);A.legacy=true}}catch(e){}
+function syncShiftGate(){try{access().includes('shift')?localStorage.setItem(SHIFT_PIN,'ACTIVE'):(A.legacy||localStorage.removeItem(SHIFT_PIN))}catch(e){}}
+function pinDialog(msg){
+ open(`<h3>Enter your PIN</h3>${msg?`<p class="hint" style="margin:-6px 0 12px">${msg}</p>`:''}
+ <input name="pin" class="amt" inputmode="numeric" maxlength="6" pattern="\\d{6}" placeholder="••••••" required autocomplete="one-time-code">
+ <div class="btns"><button class="btn pri" style="flex:1">Unlock</button><button class="btn" value="cancel">Cancel</button></div>
+ <p class="hint">Your PIN is emailed from hello@slipsync.africa after payment. Check spam if it hasn’t arrived.</p>`,f=>{
+  const pin=String(f.get('pin')).trim();
+  fetch('/api/activate?pin='+encodeURIComponent(pin)).then(r=>r.json()).then(j=>{
+   if(j.valid){A.plan=j.plan;A.mods=j.modules;A.pin=pin;A.name=j.name;save();syncShiftGate();dlg.close();render();toast('Unlocked — welcome'+(j.name&&j.name!=='Owner'?', '+j.name:''))}
+   else toast(j.error||'That PIN didn’t work')}).catch(()=>toast('No connection — try again'));
+  return false});
+}
+function trialBar(){if(A.plan)return'';const d=trialLeft();return d>0?`<div class="trial"><span>Free trial: <b class="num">${d} day${d>1?'s':''}</b> of All-Access left</span><button data-act="plans">See plans</button></div>`:''}
+function viewShift(){return `<section class="shiftcard"><div class="big">The shift doesn’t lie.</div><p>Shift has its own screen with slip scanning, TipTrack and cash-ups. Everything stays on this phone.</p><a class="btn pri" href="/shift" style="display:inline-block;text-decoration:none">Open Shift</a></section>`}
+
+/* ============ RENDER ============ */
+function render(){
+ syncShiftGate();
+ if(/[?&]subscribed=1/.test(location.search)&&!A.plan){history.replaceState(null,'',location.pathname);$('#view').innerHTML='';return pinDialog('Payment received. Your PIN is on its way to your email — enter it below.')}
+ if(!A.trialStart&&!A.plan){$('#view').innerHTML='';return onboard()}
+ const acc=access();
+ document.querySelectorAll('.mods button').forEach(b=>{b.hidden=A.plan?!acc.includes(b.dataset.m):false});
+ if(!acc.length){$('#view').innerHTML='';$('#fab').hidden=true;return paywall()}
+ if(!acc.includes(S.ui.mod))S.ui.mod=acc[0];
+ const m=S.ui.mod;$('#fab').hidden=m==='shift';document.documentElement.dataset.mod=m;
+ document.querySelectorAll('.mods button').forEach(b=>b.setAttribute('aria-selected',b.dataset.m===m));
+ $('#mLbl').textContent=mLabel(MONTH);
+ $('#fab').textContent=m==='road'?'+ Slip or trip':'+ Add slip';
+ $('#view').innerHTML=trialBar()+(m==='shift'?viewShift():m==='road'?viewRoad():viewBudget(m));
+}
+function heroBlock(label,left,total,spent,pr,extra=''){
+ const pct=total>0?Math.min(100,spent/total*100):0;
+ return `<section class="hero"><small>${label}</small>
+ <div class="big num ${left<0?'neg':''}">${left<0?'−':''}${R0(Math.abs(left))}</div>
+ <div class="track" role="img" aria-label="${Math.round(pct)}% used"><i style="width:${pct}%;${pct>=100?'background:var(--bad)':''}"></i>${pr.p>0&&pr.p<1?`<span class="pace" style="left:${pr.p*100}%" title="Where you should be today"></span>`:''}</div>
+ <div class="stats"><div><span>Spent</span><b class="num">${R0(spent)}</b></div><div><span>Budget</span><b class="num">${R0(total)}</b></div><div><span>${pr.left?'Days left':'Month'}</span><b class="num">${pr.left||'Closed'}</b></div></div>${extra}</section>`
+}
+function insightsBlock(list){return `<h2>What SlipSync sees</h2>`+list.map(([k,t])=>`<p class="ins ${k}">${t}</p>`).join('')}
+function txList(list,mod){
+ if(!list.length)return `<p class="empty">Nothing here yet. Tap the button below to capture a slip.</p>`;
+ const cats=S[mod].cats||[];
+ return list.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(t=>{const c=cats.find(c=>c.id===t.cat);
+  return `<div class="tx">${t.img?`<img class="th" src="${t.img}" alt="Slip">`:`<div class="th" aria-hidden="true">🧾</div>`}
+  <div class="mid"><div>${esc(t.store||(c?c.name:t.cat)||'Expense')}</div><div class="sub">${new Date(t.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'})} · ${esc(c?c.name:t.cat)}${t.type==='nice'?' · nice-to-have':''}${t.reimb?' · claimable':''}${t.who?' · '+esc(t.who):''}${t.litres?' · '+t.litres+' L':''}</div></div>
+  <b class="num">${R(t.amt)}</b><button class="del" data-del="${mod}:tx:${t.id}" aria-label="Delete">✕</button></div>`}).join('')
+}
+function viewBudget(mod){
+ const D=S[mod],b=budgetCalc(mod),pr=progress();
+ const title=mod==='cur'?`Left of ${D.cfg.client?esc(D.cfg.client)+'’s':'the'} float`:'Left to spend this month';
+ const mustP=b.spent?b.must/b.spent*100:0;
+ const envs=D.cats.map(c=>{const s=b.byCat[c.id]||0,l=+c.limit||0,p=l?Math.min(100,s/l*100):0;const col=s>l&&l?'var(--bad)':(pr.p<1&&l&&s/Math.max(pr.p,.05)>l*1.1?'var(--warn)':'var(--acc)');
+  return `<div class="env" data-cat="${c.id}"><div class="row"><span class="nm">${esc(c.name)}<span class="tag">${c.type==='nice'?'Nice to have':'Must have'}</span></span><span class="left num">${l?(l-s>=0?R0(l-s)+' left':R0(s-l)+' over'):R0(s)}</span></div><div class="track"><i style="width:${p}%;background:${col}"></i></div></div>`}).join('');
+ const actions=mod==='cur'?`<div class="btns"><button class="btn pri" data-act="send-wa">Send via WhatsApp</button><button class="btn pri" data-act="send-mail">Send via email</button><button class="btn" data-act="pdf">Share PDF statement</button><button class="btn" data-act="setup">Client & float</button></div>`
+  :`<div class="btns"><button class="btn" data-act="pdf">Month report PDF</button><button class="btn" data-act="csv">Export CSV</button><button class="btn" data-act="setup">Budget & envelopes</button></div>`;
+ const unallocated=mod==='cur'?(+D.cfg.float||0)-D.cats.reduce((a,c)=>a+ +c.limit,0):(+D.cfg.income||0)-b.total;
+ const zb=mod==='home'&&+D.cfg.income>0?`<p class="ins ${unallocated<0?'bad':unallocated>0?'warn':'ok'}">${unallocated===0?'Every rand of income has a job. That’s a zero-based budget — nicely done.':unallocated>0?`<b class="num">${R0(unallocated)}</b> of income isn’t in an envelope yet. Give it a job, or move it to Savings.`:`Envelopes add up to <b class="num">${R0(-unallocated)}</b> more than income.`}</p>`:'';
+ return heroBlock(title,b.left,b.total,b.spent,pr)+actions+insightsBlock(budgetInsights(mod))+zb+
+ `<h2>Must have vs nice to have</h2>${b.spent?`<div class="split"><div style="width:${mustP}%;background:var(--acc)">${Math.round(mustP)}%</div><div style="width:${100-mustP}%;background:var(--mute)">${Math.round(100-mustP)}%</div></div><div class="legend"><span>Must <b class="num">${R0(b.must)}</b></span><span>Nice <b class="num">${R0(b.nice)}</b></span></div>`:'<p class="empty">Split appears after your first slip.</p>'}
+ <h2>Envelopes</h2>${envs}<h2>Slips this month</h2>${txList(b.tx,mod)}`
+}
+function viewRoad(){
+ const D=S.road,r=roadCalc(),pr=progress();
+ const lbl=D.cfg.mode==='allowance'?'Allowance left this month':'Claimable this month';
+ const big=D.cfg.mode==='allowance'?heroBlock(lbl,r.left,r.allow,r.used,pr):
+  `<section class="hero"><small>${lbl}</small><div class="big num">${R0(r.claimTotal)}</div><div class="stats"><div><span>Expenses</span><b class="num">${R0(r.claim)}</b></div><div><span>Business km</span><b class="num">${Math.round(r.km)}</b></div><div><span>Km value</span><b class="num">${R0(r.kmVal)}</b></div></div></section>`;
+ const cats=Object.entries(r.byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="env"><div class="row"><span class="nm">${esc(k)}</span><span class="left num">${R0(v)}</span></div><div class="track"><i style="width:${r.spent?v/r.spent*100:0}%"></i></div></div>`).join('')||'<p class="empty">Spending by category shows up here.</p>';
+ const trips=r.trips.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(t=>`<div class="tx"><div class="th" aria-hidden="true">🛣️</div><div class="mid"><div>${esc(t.from||'?')} → ${esc(t.to||'?')}</div><div class="sub">${new Date(t.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'})} · ${esc(t.purpose||'No business reason')}</div></div><b class="num">${Math.round(t.km)} km</b><button class="del" data-del="road:trips:${t.id}" aria-label="Delete">✕</button></div>`).join('')||'<p class="empty">No trips logged. Log odometer readings to build a SARS-ready logbook.</p>';
+ return big+`<div class="btns"><button class="btn pri" data-act="send-wa">Send claim via WhatsApp</button><button class="btn pri" data-act="send-mail">Email claim</button><button class="btn" data-act="pdf">Claim pack PDF</button><button class="btn" data-act="csv">SARS logbook CSV</button><button class="btn" data-act="setup">Allowance & manager</button></div>`
+ +insightsBlock(roadInsights())+`<h2>Where it went</h2>${cats}<h2>Trips</h2>${trips}<h2>Slips</h2>${txList(r.tx,'road')}`
+}
+
+/* ============ DIALOGS ============ */
+const dlg=$('#dlg'),body=$('#dlgBody');
+function open(html,onSubmit){body.innerHTML=html;body.onclick=null;dlg.oncancel=null;dlg.showModal();body.onsubmit=e=>{if(e.submitter&&e.submitter.value==='cancel')return;e.preventDefault();if(onSubmit(new FormData(body))!==false){dlg.close();save();render()}}}
+function segHTML(name,opts,val){return `<div class="seg" data-seg="${name}">${opts.map(([v,l])=>`<button type="button" data-v="${v}" class="${v===val?'on':''}">${l}</button>`).join('')}<input type="hidden" name="${name}" value="${val}"></div>`}
+body.addEventListener('click',e=>{const b=e.target.closest('.seg button');if(!b)return;const seg=b.parentElement;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));seg.querySelector('input').value=b.dataset.v;seg.dispatchEvent(new Event('change',{bubbles:true}))});
+const today=()=>new Date().toISOString().slice(0,10);
+function defDate(){return inMonth(today())?today():MONTH+'-01'}
+
+function addSlip(mod,kind='slip'){
+ if(mod==='road'&&kind==='pick')return open(`<h3>What are you logging?</h3><div class="btns"><button class="btn pri" type="button" data-pick="slip">Expense slip</button><button class="btn pri" type="button" data-pick="trip">Business trip</button></div><div class="btns"><button class="btn" value="cancel">Cancel</button></div>`,()=>{});
+ if(mod==='road'&&kind==='trip'){const last=S.road.trips.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
+  return open(`<h3>Log a business trip</h3><label>Date</label><input type="date" name="date" value="${defDate()}" required>
+  <div class="two"><div><label>From</label><input name="from" value="${esc(last?last.to:S.road.cfg.home)}" placeholder="Office, Sandton"></div><div><label>To</label><input name="to" required placeholder="Client site"></div></div>
+  <label>Business reason</label><input name="purpose" required placeholder="Quarterly review with Acme">
+  <div class="two"><div><label>Odometer start</label><input name="o1" inputmode="numeric" class="num" value="${last&&last.o2?last.o2:''}"></div><div><label>Odometer end</label><input name="o2" inputmode="numeric" class="num"></div></div>
+  <label>Or distance (km)</label><input name="km" inputmode="decimal" class="num" placeholder="Worked out from odometer if blank">
+  <p class="hint">Home-to-office travel counts as private, not business. SARS wants date, destination, reason and kilometres on every line.</p>
+  <div class="btns"><button class="btn pri">Save trip</button><button class="btn" value="cancel">Cancel</button></div>`,f=>{
+   const o1=+f.get('o1'),o2=+f.get('o2');let km=+f.get('km')||(o2>o1?o2-o1:0);if(!km){toast('Add odometer readings or a distance');return false}
+   S.road.trips.push({id:uid(),date:f.get('date'),from:f.get('from'),to:f.get('to'),purpose:f.get('purpose'),o1:o1||'',o2:o2||'',km});toast('Trip logged')})}
+ const D=S[mod],cats=mod==='road'?ROADCATS.map(n=>({id:n,name:n,type:'must'})):D.cats;
+ const who=mod==='home'?`<label>Who spent it</label><select name="who">${(D.cfg.members||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>`<option>${esc(x)}</option>`).join('')}</select>`:'';
+ open(`<h3>${mod==='road'?'Add a road expense':'Add a slip'}</h3>
+ <label>Amount</label><input name="amt" class="amt" inputmode="decimal" required placeholder="0,00" autofocus>
+ <label>Store or supplier</label><input name="store" id="fStore" placeholder="Checkers, Engen, SANRAL…" autocomplete="off">
+ <div class="two"><div><label>Category</label><select name="cat" id="fCat">${cats.map(c=>`<option value="${c.id}" data-type="${c.type}">${esc(c.name)}</option>`).join('')}</select></div><div><label>Date</label><input type="date" name="date" value="${defDate()}" required></div></div>
+ ${mod!=='road'?`<label>Priority</label>${segHTML('type',[['must','Must have'],['nice','Nice to have']],cats[0].type)}`:`<label>Who pays</label>${segHTML('reimb',[['1','Claim from employer'],['0','Covered by allowance']],S.road.cfg.mode==='reimb'?'1':'0')}`}
+ <div id="fuelBox" hidden><label>Litres (optional)</label><input name="litres" inputmode="decimal" class="num" placeholder="e.g. 42,5"><p class="hint">Add litres and SlipSync tracks your price per litre over time.</p></div>
+ ${who}<label>Slip photo</label><input type="file" name="img" accept="image/*" capture="environment">
+ <label>Note</label><input name="note" placeholder="Optional">
+ <div class="btns"><button class="btn pri">Save slip</button><button class="btn" value="cancel">Cancel</button></div>`,f=>{
+  const amt=parseFloat(String(f.get('amt')).replace(/\s/g,'').replace(',','.'));if(!(amt>0)){toast('Enter an amount');return false}
+  const t={id:uid(),amt,store:f.get('store'),cat:f.get('cat'),date:f.get('date'),note:f.get('note'),who:f.get('who')||'',litres:parseFloat(String(f.get('litres')||'').replace(',','.'))||0};
+  if(mod==='road')t.reimb=f.get('reimb')==='1';else t.type=f.get('type');
+  const file=f.get('img');readImg(file&&file.size?file:null).then(img=>{t.img=img;S[mod].tx.push(t);save();render();toast('Slip saved')});
+ });
+ const fs=$('#fStore'),fc=$('#fCat'),fb=$('#fuelBox');
+ const syncFuel=()=>{fb.hidden=!/fuel/i.test(fc.options[fc.selectedIndex].text)};
+ const syncType=()=>{const seg=body.querySelector('[data-seg=type]');if(!seg)return;const ty=fc.options[fc.selectedIndex].dataset.type;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.v===ty));seg.querySelector('input').value=ty};
+ fs.addEventListener('input',()=>{const g=guessCat(fs.value,cats);if(g){fc.value=g.id;syncType();syncFuel()}});
+ fc.addEventListener('change',()=>{syncType();syncFuel()});syncFuel();
+}
+body.addEventListener('click',e=>{const p=e.target.closest('[data-pick]');if(p){dlg.close();addSlip('road',p.dataset.pick)}});
+
+function setup(mod){
+ const D=S[mod];
+ if(mod==='road'){const c=D.cfg;return open(`<h3>Allowance & manager</h3>
+  <label>How are you paid for travel?</label>${segHTML('mode',[['allowance','Monthly allowance'],['reimb','Claim per km + expenses']],c.mode)}
+  <label>Monthly allowance (R)</label><input name="allowance" class="num" inputmode="decimal" value="${c.allowance}">
+  <label>Rate per km (R)</label><input name="rate" class="num" inputmode="decimal" value="${c.rate}"><p class="hint">SARS prescribed rate for 1 March 2026 – 28 February 2027 is R4,95/km. Anything your employer pays above that is taxable.</p>
+  <div class="two"><div><label>Your name</label><input name="name" value="${esc(c.name)}"></div><div><label>Company</label><input name="company" value="${esc(c.company)}"></div></div>
+  <label>Usual starting point</label><input name="home" value="${esc(c.home)}" placeholder="Office, Sandton">
+  <label>Manager or finance name</label><input name="mgr" value="${esc(c.mgr)}">
+  <div class="two"><div><label>Their email</label><input type="email" name="email" value="${esc(c.email)}"></div><div><label>Their WhatsApp</label><input name="wa" inputmode="tel" value="${esc(c.wa)}" placeholder="082 123 4567"></div></div>
+  <div class="btns"><button class="btn pri">Save</button><button class="btn" value="cancel">Cancel</button></div>`,f=>{for(const k of ['mode','name','company','home','mgr','email','wa'])c[k]=f.get(k);c.allowance=+String(f.get('allowance')).replace(',','.')||0;c.rate=+String(f.get('rate')).replace(',','.')||RATE_KM;toast('Saved')})}
+ const c=D.cfg,rows=cats=>cats.map(k=>`<div class="catrow" data-id="${k.id}"><input value="${esc(k.name)}" aria-label="Envelope name"><input class="num" inputmode="decimal" value="${k.limit}" aria-label="Limit"><select aria-label="Priority"><option value="must" ${k.type==='must'?'selected':''}>Must</option><option value="nice" ${k.type==='nice'?'selected':''}>Nice</option></select><button type="button" class="del" data-rm aria-label="Remove">✕</button></div>`).join('');
+ open(`<h3>${mod==='cur'?'Client & float':'Budget & envelopes'}</h3>
+ ${mod==='cur'?`<div class="two"><div><label>Client name</label><input name="client" value="${esc(c.client)}" placeholder="Mrs Botha"></div><div><label>Your name</label><input name="me" value="${esc(c.me)}"></div></div>
+  <label>Monthly float from client (R)</label><input name="float" class="num" inputmode="decimal" value="${c.float}">
+  <div class="two"><div><label>Client email</label><input type="email" name="email" value="${esc(c.email)}"></div><div><label>Client WhatsApp</label><input name="wa" inputmode="tel" value="${esc(c.wa)}" placeholder="082 123 4567"></div></div>`
+ :`<label>Monthly household income (R)</label><input name="income" class="num" inputmode="decimal" value="${c.income||''}" placeholder="Optional — enables zero-based check">
+  <label>Family members (comma separated)</label><input name="members" value="${esc(c.members)}">`}
+ <label>Envelopes: name, monthly limit, priority</label><div id="catBox">${rows(D.cats)}</div>
+ <div class="btns"><button type="button" class="btn" id="addCat">+ Envelope</button>${mod==='home'?'<button type="button" class="btn" id="rule">Suggest 50/30/20</button>':''}</div>
+ <p class="hint">Must haves are the bills and basics. Nice to haves are what you’d cut first in a tight month.</p>
+ <div class="btns"><button class="btn pri">Save budget</button><button class="btn" value="cancel">Cancel</button></div>`,f=>{
+  if(mod==='cur'){for(const k of ['client','me','email','wa'])c[k]=f.get(k);c.float=+String(f.get('float')).replace(',','.')||0}else{c.income=+String(f.get('income')).replace(',','.')||0;c.members=f.get('members')}
+  D.cats=[...body.querySelectorAll('.catrow')].map(r=>{const i=r.querySelectorAll('input,select');return{id:r.dataset.id,name:i[0].value.trim()||'Envelope',limit:+i[1].value.replace(',','.')||0,type:i[2].value}});toast('Budget saved')});
+ const box=$('#catBox');
+ box.addEventListener('click',e=>{if(e.target.closest('[data-rm]'))e.target.closest('.catrow').remove()});
+ $('#addCat').onclick=()=>box.insertAdjacentHTML('beforeend',rows([{id:'c'+uid(),name:'',limit:0,type:'must'}]));
+ const rb=$('#rule');if(rb)rb.onclick=()=>{const inc=+String(body.income.value).replace(',','.');if(!inc){toast('Enter income first');return}
+  const rs=[...box.querySelectorAll('.catrow')],must=rs.filter(r=>r.querySelector('select').value==='must'&&!/sav/i.test(r.querySelector('input').value)),nice=rs.filter(r=>r.querySelector('select').value==='nice'),sav=rs.filter(r=>/sav/i.test(r.querySelector('input').value));
+  const spread=(list,amt)=>list.forEach(r=>r.querySelectorAll('input')[1].value=Math.round(amt/list.length/10)*10);
+  spread(must,inc*.5);spread(nice,inc*.3);spread(sav,inc*.2);toast('50% needs · 30% wants · 20% savings')};
+}
+
+/* ============ SEND & EXPORT ============ */
+function waNum(n){n=String(n||'').replace(/\D/g,'');if(n.startsWith('0'))n='27'+n.slice(1);return n}
+function summaryText(mod){
+ if(mod==='road'){const r=roadCalc(),c=S.road.cfg;
+  return `SlipSync Road — ${mLabel(MONTH)}\n${c.name||''}${c.company?' ('+c.company+')':''}\n\n`+
+  (c.mode==='allowance'?`Allowance: ${R(r.allow)}\nSpent: ${R(r.spent)}\nLeft: ${R(r.left)}\n`:`Expenses to claim: ${R(r.claim)}\nBusiness km: ${Math.round(r.km)} × ${R(c.rate)} = ${R(r.kmVal)}\nTOTAL CLAIM: ${R(r.claimTotal)}\n`)+
+  `\nBy category:\n`+Object.entries(r.byCat).map(([k,v])=>`• ${k}: ${R(v)}`).join('\n')+`\n\n${r.tx.filter(t=>t.img).length}/${r.tx.length} slips attached. Full claim pack PDF to follow.`}
+ const D=S[mod],b=budgetCalc(mod);
+ const head=mod==='cur'?`Purchases statement — ${mLabel(MONTH)}\nFor: ${D.cfg.client||'client'}\nFrom: ${D.cfg.me||''}\n\nFloat: ${R(b.total)}\nSpent: ${R(b.spent)}\nBalance: ${R(b.left)}\n`:`Family budget — ${mLabel(MONTH)}\nBudget: ${R(b.total)}\nSpent: ${R(b.spent)}\nLeft: ${R(b.left)}\n`;
+ return head+`\nBy category:\n`+D.cats.filter(c=>b.byCat[c.id]).map(c=>`• ${c.name}: ${R(b.byCat[c.id])}`).join('\n')+`\n\n${b.tx.length} purchases, ${b.tx.filter(t=>t.img).length} with slip photos.`
+}
+function send(mod,how){
+ const c=S[mod].cfg,txt=summaryText(mod);
+ if(how==='wa'){if(!c.wa){toast('Add a WhatsApp number in setup');return setup(mod)}window.open('https://wa.me/'+waNum(c.wa)+'?text='+encodeURIComponent(txt),'_blank')}
+ else{if(!c.email){toast('Add an email address in setup');return setup(mod)}location.href='mailto:'+c.email+'?subject='+encodeURIComponent(txt.split('\n')[0])+'&body='+encodeURIComponent(txt+'\n\nSent with SlipSync')}
+}
+async function pdf(mod){
+ if(!window.jspdf){toast('PDF engine still loading');return}
+ const {jsPDF}=window.jspdf,doc=new jsPDF({unit:'mm',format:'a4'});let y=20;
+ const line=(t,s=10,b=false)=>{if(y>275){doc.addPage();y=20}doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(s);doc.text(String(t),15,y);y+=s*.5+2};
+ doc.setFillColor(255,107,26);doc.rect(0,0,210,6,'F');
+ const txt=summaryText(mod).split('\n');line(txt[0],16,true);txt.slice(1).forEach(l=>line(l,10,/TOTAL|Balance|Left:/.test(l)));
+ const list=(mod==='road'?roadCalc().tx:budgetCalc(mod).tx).slice().sort((a,b)=>a.date.localeCompare(b.date));
+ y+=4;line('Itemised',12,true);
+ const cats=S[mod].cats||[];
+ list.forEach(t=>{const c=cats.find(c=>c.id===t.cat);line(`${t.date}   ${(t.store||'').slice(0,28).padEnd(28)}  ${(c?c.name:t.cat||'').slice(0,20).padEnd(20)}  ${R(t.amt)}`,9)});
+ if(mod==='road'){const tr=roadCalc().trips;if(tr.length){y+=4;line('Logbook',12,true);tr.sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>line(`${t.date}  ${t.from} → ${t.to}  ${t.purpose}  ${t.o1?t.o1+'-'+t.o2+'  ':''}${Math.round(t.km)} km`,9))}}
+ const imgs=list.filter(t=>t.img);
+ imgs.forEach((t,i)=>{if(i%2===0){doc.addPage();y=15}const top=i%2===0?15:150;doc.setFontSize(9);doc.text(`${t.date}  ${t.store||''}  ${R(t.amt)}`,15,top);try{doc.addImage(t.img,'JPEG',15,top+3,90,125,undefined,'FAST')}catch(e){}});
+ const name=`SlipSync-${mod}-${MONTH}.pdf`,blob=doc.output('blob'),file=new File([blob],name,{type:'application/pdf'});
+ if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name,text:txt[0]})}catch(e){}}
+ else{doc.save(name)}
+}
+function csv(mod){
+ let rows;
+ if(mod==='road'){rows=[['Date','From','To','Business reason','Odometer start','Odometer end','Km','Value at rate']].concat(roadCalc().trips.map(t=>[t.date,t.from,t.to,t.purpose,t.o1,t.o2,t.km,(t.km*S.road.cfg.rate).toFixed(2)]))}
+ else{const cats=S[mod].cats;rows=[['Date','Store','Category','Priority','Who','Amount','Litres','Note']].concat(budgetCalc(mod).tx.map(t=>{const c=cats.find(c=>c.id===t.cat);return[t.date,t.store,c?c.name:'',t.type,t.who,t.amt,t.litres||'',t.note]}))}
+ const s=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\n'),name=`SlipSync-${mod==='road'?'logbook':mod}-${MONTH}.csv`,file=new File([s],name,{type:'text/csv'});
+ if(navigator.canShare&&navigator.canShare({files:[file]}))navigator.share({files:[file],title:name}).catch(()=>{});
+ else{const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;a.click()}
+}
+
+/* ============ WIRING ============ */
+document.querySelector('.mods').onclick=e=>{const b=e.target.closest('button');if(b){S.ui.mod=b.dataset.m;save();render();scrollTo(0,0)}};
+$('#mPrev').onclick=()=>{MONTH=shiftM(MONTH,-1);render()};$('#mNext').onclick=()=>{MONTH=shiftM(MONTH,1);render()};
+$('#fab').onclick=()=>addSlip(S.ui.mod,S.ui.mod==='road'?'pick':'slip');
+$('#view').addEventListener('click',e=>{
+ const d=e.target.closest('[data-del]');if(d){const [mod,list,id]=d.dataset.del.split(':');if(confirm('Delete this entry?')){S[mod][list]=S[mod][list].filter(x=>x.id!==id);save();render();toast('Deleted')}return}
+ const a=e.target.closest('[data-act]');if(a){const m=S.ui.mod,act=a.dataset.act;
+  if(act==='plans')paywall();else if(act==='setup')setup(m);else if(act==='send-wa')send(m,'wa');else if(act==='send-mail')send(m,'mail');else if(act==='pdf')pdf(m);else if(act==='csv')csv(m);return}
+ if(e.target.closest('.env[data-cat]'))setup(S.ui.mod);
+});
+if(/[?&]reset\b/.test(location.search)){delete S.acct;save();location.replace(location.pathname)}
+render();
+</script>
+</body>
+</html>
