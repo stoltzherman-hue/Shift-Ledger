@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>SlipSync — Home, Curator, Road</title>
+<title>SlipSync — Shift, Home, Curator & Road</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
@@ -88,18 +88,20 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
 .shiftcard{padding:30px 0}.shiftcard p{color:var(--mute);line-height:1.5;margin:10px 0 18px}
 @media (prefers-reduced-motion:reduce){.track i,.toast{transition:none}}
 </style>
+<link rel="stylesheet" href="/refresh.css">
 </head>
-<body>
+<body class="suite-ui">
 <header>
-  <div class="logo">Slip<b>Sync</b></div>
+  <a class="logo" href="/?home" aria-label="SlipSync home"><span class="ui-mark" aria-hidden="true">s↗</span>Slip<b>Sync</b><span class="logo-dot">.</span></a>
   <div class="mon"><button id="mPrev" aria-label="Previous month">‹</button><span id="mLbl" class="num"></span><button id="mNext" aria-label="Next month">›</button></div>
 </header>
-<nav class="mods" role="tablist">
-  <button role="tab" data-m="shift">Shift</button>
-  <button role="tab" data-m="home">Home</button>
-  <button role="tab" data-m="cur">Curator</button>
-  <button role="tab" data-m="road">Road</button>
+<nav class="mods" role="tablist" aria-label="SlipSync modules">
+  <button role="tab" data-m="shift"><span class="mod-symbol" aria-hidden="true">⌑</span><span>Shift</span><small aria-hidden="true">01</small></button>
+  <button role="tab" data-m="home"><span class="mod-symbol" aria-hidden="true">⌂</span><span>Home</span><small aria-hidden="true">02</small></button>
+  <button role="tab" data-m="cur"><span class="mod-symbol" aria-hidden="true">⊞</span><span>Curator</span><small aria-hidden="true">03</small></button>
+  <button role="tab" data-m="road"><span class="mod-symbol" aria-hidden="true">↗</span><span>Road</span><small aria-hidden="true">04</small></button>
 </nav>
+<div class="workspace-heading"><div><p class="workspace-eyebrow">YOUR EVERYDAY, IN SYNC</p><h1><span data-title="shift">Make every shift count.</span><span data-title="home">A little more room to live.</span><span data-title="cur">Every purchase, accounted for.</span><span data-title="road">Keep moving. Stay on track.</span></h1></div><span class="workspace-stamp" aria-hidden="true">✳</span></div>
 <main id="view"></main>
 <button class="fab" id="fab">+ Add slip</button>
 
