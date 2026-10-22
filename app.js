@@ -385,6 +385,8 @@ function checkFirstUse(){if(!cfg.waiterName){const m=document.getElementById('na
 
 /* ── SHIFT SUMMARY PDF ── */
 function downloadShiftSummary(){
+  try {
+    if(!window.jspdf || !window.jspdf.jsPDF) throw new Error('PDF library did not load. Check your internet connection and reload Shift.');
   const today=todayKey(new Date());
   const list=slipsForDay(today);
   const s=summarise(list);
@@ -444,6 +446,10 @@ function downloadShiftSummary(){
   for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(9);doc.setTextColor(180);doc.text('ShiftLedger · Generated '+new Date().toLocaleString(),M,doc.internal.pageSize.getHeight()-20)}
   if(list.length===0){alert('No tables captured today yet. Add some slips first.');return}
   doc.save('ShiftLedger-'+waiter.replace(/\s+/g,'-')+'-'+today+'.pdf');
+  } catch(error) {
+    console.error('Shift PDF export failed:',error);
+    alert('Could not generate the PDF: '+(error && error.message ? error.message : 'Unknown error')+'\nPlease retry in your browser.');
+  }
 }
 
 /* ── ACCESS GATE ── */
