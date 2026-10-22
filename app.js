@@ -14,12 +14,11 @@ function load(k,def){try{return JSON.parse(localStorage.getItem(k))??def}catch(e
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}
 function persist(){
   if(!save(KEY,slips)){
-    // storage full: drop photos oldest-first until the numbers fit, never lose the data
-    const imgs=slips.filter(s=>s.img).sort((a,b)=>a.ts-b.ts);
-    for(const s of imgs){s.img=null;if(save(KEY,slips))break}
-    if(!save(KEY,slips))alert('Phone storage is full. Export a backup, then Full Reset to free space.');
+    alert('Shift could not save your latest changes because browser storage is full or unavailable. Existing saved slip photos have NOT been deleted. Export a backup from Settings and free storage safely before adding more slips.');
+    return false;
   }
   save(CASHKEY,cash);save(CFGKEY,cfg);
+  return true;
 }
 
 const cur=()=>cfg.cur||'R';
@@ -205,7 +204,8 @@ function recalcSlip(){const bill=r2(document.getElementById('fBill').value),tip=
   document.getElementById('sumTotal').textContent=money(bill+tip);
   document.getElementById('tipPctNote').textContent=(bill>0&&tip>0)?`That's ${r2(tip/bill*100)}% of the bill.`:'';
   renderPresets()}
-function saveSlip(){const bill=r2(document.getElementById('fBill').value);
+function saveSlip(){const previousSlips=slips.map(x=>({...x}));
+  const bill=r2(document.getElementById('fBill').value);
   if(bill<=0){alert('Enter the bill amount first.');return}
   const tip=r2(document.getElementById('fTip').value);
   const suggAmt=curPct!=null?r2(bill*curPct/100):null;
@@ -213,7 +213,8 @@ function saveSlip(){const bill=r2(document.getElementById('fBill').value);
     table:document.getElementById('fTable').value.trim(),suggPct:curPct,suggAmt,img:curImg})}
   else{slips.push({id:Date.now(),ts:Date.now(),bill,tip,pay:curPay,
     table:document.getElementById('fTable').value.trim(),suggPct:curPct,suggAmt,img:curImg})}
-  persist();closeSlip();show('today')}
+  if(!persist()){slips=previousSlips;return}
+  closeSlip();show('today')}
 function deleteSlip(){if(!confirm('Delete this slip?'))return;slips=slips.filter(s=>s.id!==editId);persist();closeSlip();show('today')}
 
 /* ---------- PHOTO + OCR ---------- */
