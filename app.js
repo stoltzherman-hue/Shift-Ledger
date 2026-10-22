@@ -14,12 +14,11 @@ function load(k,def){try{return JSON.parse(localStorage.getItem(k))??def}catch(e
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}
 function persist(){
   if(!save(KEY,slips)){
-    // storage full: drop photos oldest-first until the numbers fit, never lose the data
-    const imgs=slips.filter(s=>s.img).sort((a,b)=>a.ts-b.ts);
-    for(const s of imgs){s.img=null;if(save(KEY,slips))break}
-    if(!save(KEY,slips))alert('Phone storage is full. Export a backup, then Full Reset to free space.');
+    alert('Shift could not save your latest changes because browser storage is full or unavailable. Existing saved slip photos have NOT been deleted. Export a backup from Settings and free storage safely before adding more slips.');
+    return false;
   }
   save(CASHKEY,cash);save(CFGKEY,cfg);
+  return true;
 }
 
 const cur=()=>cfg.cur||'R';
@@ -213,7 +212,8 @@ function saveSlip(){const bill=r2(document.getElementById('fBill').value);
     table:document.getElementById('fTable').value.trim(),suggPct:curPct,suggAmt,img:curImg})}
   else{slips.push({id:Date.now(),ts:Date.now(),bill,tip,pay:curPay,
     table:document.getElementById('fTable').value.trim(),suggPct:curPct,suggAmt,img:curImg})}
-  persist();closeSlip();show('today')}
+  if(!persist())return;
+  closeSlip();show('today')}
 function deleteSlip(){if(!confirm('Delete this slip?'))return;slips=slips.filter(s=>s.id!==editId);persist();closeSlip();show('today')}
 
 /* ---------- PHOTO + OCR ---------- */
