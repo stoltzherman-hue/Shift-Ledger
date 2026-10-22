@@ -204,7 +204,8 @@ function recalcSlip(){const bill=r2(document.getElementById('fBill').value),tip=
   document.getElementById('sumTotal').textContent=money(bill+tip);
   document.getElementById('tipPctNote').textContent=(bill>0&&tip>0)?`That's ${r2(tip/bill*100)}% of the bill.`:'';
   renderPresets()}
-function saveSlip(){const bill=r2(document.getElementById('fBill').value);
+function saveSlip(){const previousSlips=slips.map(x=>({...x}));
+  const bill=r2(document.getElementById('fBill').value);
   if(bill<=0){alert('Enter the bill amount first.');return}
   const tip=r2(document.getElementById('fTip').value);
   const suggAmt=curPct!=null?r2(bill*curPct/100):null;
@@ -212,7 +213,7 @@ function saveSlip(){const bill=r2(document.getElementById('fBill').value);
     table:document.getElementById('fTable').value.trim(),suggPct:curPct,suggAmt,img:curImg})}
   else{slips.push({id:Date.now(),ts:Date.now(),bill,tip,pay:curPay,
     table:document.getElementById('fTable').value.trim(),suggPct:curPct,suggAmt,img:curImg})}
-  if(!persist())return;
+  if(!persist()){slips=previousSlips;return}
   closeSlip();show('today')}
 function deleteSlip(){if(!confirm('Delete this slip?'))return;slips=slips.filter(s=>s.id!==editId);persist();closeSlip();show('today')}
 
