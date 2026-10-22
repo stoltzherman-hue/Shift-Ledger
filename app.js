@@ -442,6 +442,39 @@ function downloadShiftSummary(){
     doc.text(time,W-M,y,{align:'right'});
     y+=16;
   });
+  // Photo appendix: one receipt per page to keep images readable on phones.
+  const photographed=sorted.filter(x=>typeof x.img==='string' && x.img.startsWith('data:image/'));
+  if(photographed.length){
+    photographed.forEach((x,i)=>{
+      doc.addPage();
+      doc.setFillColor(14,20,19);doc.rect(0,0,W,65,'F');
+      doc.setTextColor(61,220,151);doc.setFont('helvetica','bold');doc.setFontSize(17);
+      doc.text('SlipSync Shift - Slip Photos',M,31);
+      doc.setTextColor(235,240,237);doc.setFontSize(10);
+      doc.text('Slip '+(i+1)+' of '+photographed.length,M,49);
+      doc.setTextColor(30,30,30);doc.setFont('helvetica','bold');doc.setFontSize(12);
+      doc.text('Table '+(x.table||'-')+'  |  Bill R '+Number(x.bill||0).toFixed(2)+'  |  Tip R '+Number(x.tip||0).toFixed(2),M,90);
+      doc.setFont('helvetica','normal');doc.setFontSize(10);
+      doc.text('Payment: '+String(x.pay||'-')+'  |  '+new Date(x.ts).toLocaleString(),M,108);
+      try{
+        const props=doc.getImageProperties(x.img);
+        const maxW=W-2*M,maxH=doc.internal.pageSize.getHeight()-160;
+        const ratio=Math.min(maxW/props.width,maxH/props.height);
+        const imgW=props.width*ratio,imgH=props.height*ratio;
+        doc.addImage(x.img,props.fileType||'JPEG',(W-imgW)/2,128,imgW,imgH);
+      }catch(imageError){
+        console.warn('Unable to embed slip photo',x.id,imageError);
+        doc.setTextColor(180,45,45);doc.text('This saved photo could not be embedded.',M,145);
+      }
+    });
+  }
+  const missing=list.length-photographed.length;
+  if(missing){
+    doc.addPage();doc.setTextColor(30,30,30);doc.setFont('helvetica','bold');doc.setFontSize(15);
+    doc.text('Slip photo availability',M,60);doc.setFont('helvetica','normal');doc.setFontSize(11);
+    doc.text(String(missing)+' of '+list.length+' slips have no saved photo.',M,88);
+    doc.text('Photos may not have been captured or may have been removed to save storage.',M,108);
+  }
   // Footer
   const pages=doc.internal.getNumberOfPages();
   for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(9);doc.setTextColor(180);doc.text('ShiftLedger · Generated '+new Date().toLocaleString(),M,doc.internal.pageSize.getHeight()-20)}
