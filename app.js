@@ -385,8 +385,11 @@ function checkFirstUse(){if(!cfg.waiterName){const m=document.getElementById('na
 
 /* ── SHIFT SUMMARY PDF ── */
 function downloadShiftSummary(){
+  try {
+    if(!window.jspdf || !window.jspdf.jsPDF) throw new Error('PDF library did not load. Check your internet connection and reload Shift.');
   const today=todayKey(new Date());
   const list=slipsForDay(today);
+  if(list.length===0){alert('No tables captured today yet. Add some slips first.');return}
   const s=summarise(list);
   const d=new Date();
   const waiter=cfg.waiterName||'Waiter';
@@ -404,14 +407,14 @@ function downloadShiftSummary(){
   doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(30,30,30);
   doc.text('Shift Totals',M,y);y+=18;
   const rows=[
-    ['Total sales', 'R '+s.totalSales.toFixed(2)],
-    ['Tables served', String(s.slipCount)],
-    ['Average spend', 'R '+s.avgSpend.toFixed(2)],
+    ['Total sales', 'R '+s.sales.toFixed(2)],
+    ['Tables served', String(s.n)],
+    ['Average spend', 'R '+s.spend.toFixed(2)],
     ['Largest table', 'R '+s.largest.toFixed(2)],
-    ['Total tips', 'R '+s.totalActualTips.toFixed(2)],
-    ['Average tip %', s.avgTipPct.toFixed(1)+'%'],
-    ['Card total', 'R '+s.cardTotal.toFixed(2)],
-    ['Cash total', 'R '+s.cashTotal.toFixed(2)],
+    ['Total tips', 'R '+s.tips.toFixed(2)],
+    ['Average tip %', s.avg.toFixed(1)+'%'],
+    ['Card total', 'R '+s.card.toFixed(2)],
+    ['Cash total', 'R '+s.cash.toFixed(2)],
   ];
   doc.setFont('helvetica','normal');doc.setFontSize(11);
   rows.forEach(([k,v],i)=>{
@@ -432,18 +435,21 @@ function downloadShiftSummary(){
   sorted.forEach(x=>{
     if(y>750){doc.addPage();y=M}
     const t=new Date(x.ts),time=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
-    doc.text(x.table?'T'+x.table:'—',M,y);
+    doc.text(x.table?'T'+x.table:'-',M,y);
     doc.text('R '+x.bill.toFixed(2),M+90,y);
     doc.text('R '+x.tip.toFixed(2),M+190,y);
-    doc.text(x.pay,M+270,y);
+    doc.text(String(x.pay||''),M+270,y);
     doc.text(time,W-M,y,{align:'right'});
     y+=16;
   });
   // Footer
   const pages=doc.internal.getNumberOfPages();
   for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(9);doc.setTextColor(180);doc.text('ShiftLedger · Generated '+new Date().toLocaleString(),M,doc.internal.pageSize.getHeight()-20)}
-  if(list.length===0){alert('No tables captured today yet. Add some slips first.');return}
   doc.save('ShiftLedger-'+waiter.replace(/\s+/g,'-')+'-'+today+'.pdf');
+  } catch(error) {
+    console.error('Shift PDF export failed:',error);
+    alert('Could not generate the PDF: '+(error && error.message ? error.message : 'Unknown error')+'\nPlease retry in your browser.');
+  }
 }
 
 /* ── ACCESS GATE ── */
