@@ -339,7 +339,9 @@ function viewRoad(){
 
 /* ============ DIALOGS ============ */
 const dlg=$('#dlg'),body=$('#dlgBody');
-function openDialog(html,onSubmit){body.innerHTML=html;body.onclick=null;dlg.oncancel=null;dlg.showModal();body.onsubmit=e=>{if(e.submitter&&e.submitter.value==='cancel')return;e.preventDefault();if(onSubmit(new FormData(body))!==false){dlg.close();save();render()}}}
+let dialogGeneration=0;
+dlg.addEventListener('close',()=>{dialogGeneration++});
+function openDialog(html,onSubmit){const generation=++dialogGeneration;body.innerHTML=html;body.onclick=null;dlg.oncancel=null;dlg.showModal();body.onsubmit=e=>{if(e.submitter&&e.submitter.value==='cancel')return;e.preventDefault();if(onSubmit(new FormData(body),e.submitter)!==false){dlg.close();save();render()}};return generation}
 function segHTML(name,opts,val){return `<div class="seg" data-seg="${name}">${opts.map(([v,l])=>`<button type="button" data-v="${v}" class="${v===val?'on':''}">${l}</button>`).join('')}<input type="hidden" name="${name}" value="${val}"></div>`}
 body.addEventListener('click',e=>{const b=e.target.closest('.seg button');if(!b)return;const seg=b.parentElement;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));seg.querySelector('input').value=b.dataset.v;seg.dispatchEvent(new Event('change',{bubbles:true}))});
 const today=()=>new Date().toISOString().slice(0,10);
@@ -359,7 +361,8 @@ function addSlip(mod,kind='slip'){
    S.road.trips.push({id:uid(),date:f.get('date'),from:f.get('from'),to:f.get('to'),purpose:f.get('purpose'),o1:o1||'',o2:o2||'',km});toast('Trip logged')})}
  const D=S[mod],cats=mod==='road'?ROADCATS.map(n=>({id:n,name:n,type:'must'})):D.cats;
  const who=mod==='home'?`<label>Who spent it</label><select name="who">${(D.cfg.members||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>`<option>${esc(x)}</option>`).join('')}</select>`:'';
- openDialog(`<h3>${mod==='road'?'Add a road expense':'Add a slip'}</h3>
+ let saving=false;
+ const operation=openDialog(`<h3>${mod==='road'?'Add a road expense':'Add a slip'}</h3>
  <label>Amount</label><input name="amt" class="amt" inputmode="decimal" required placeholder="0,00" autofocus>
  <label>Store or supplier</label><input name="store" id="fStore" placeholder="Checkers, Engen, SANRAL…" autocomplete="off">
  <div class="two"><div><label>Category</label><select name="cat" id="fCat">${cats.map(c=>`<option value="${c.id}" data-type="${c.type}">${esc(c.name)}</option>`).join('')}</select></div><div><label>Date</label><input type="date" name="date" value="${defDate()}" required></div></div>
@@ -367,11 +370,13 @@ function addSlip(mod,kind='slip'){
  <div id="fuelBox" hidden><label>Litres (optional)</label><input name="litres" inputmode="decimal" class="num" placeholder="e.g. 42,5"><p class="hint">Add litres and SlipSync tracks your price per litre over time.</p></div>
  ${who}<label>Slip photo</label><input type="file" name="img" accept="image/*" capture="environment">
  <label>Note</label><input name="note" placeholder="Optional">
- <div class="btns"><button class="btn pri">Save slip</button><button class="btn" value="cancel">Cancel</button></div>`,f=>{
+ <div class="btns"><button class="btn pri">Save slip</button><button class="btn" value="cancel">Cancel</button></div>`,(f,submitter)=>{
+  if(saving)return false;
   const amt=parseFloat(String(f.get('amt')).replace(/\s/g,'').replace(',','.'));if(!(amt>0)){toast('Enter an amount');return false}
+  saving=true;if(submitter)submitter.disabled=true;
   const t={id:uid(),amt,store:f.get('store'),cat:f.get('cat'),date:f.get('date'),note:f.get('note'),who:f.get('who')||'',litres:parseFloat(String(f.get('litres')||'').replace(',','.'))||0};
   if(mod==='road')t.reimb=f.get('reimb')==='1';else t.type=f.get('type');
-  const file=f.get('img');readImg(file&&file.size?file:null).then(img=>{t.img=img;S[mod].tx.push(t);if(!save()){S[mod].tx.pop();alert('SlipSync could not save this slip because browser storage is full or unavailable. Existing saved slips and photos were not changed. Export a backup and free space safely, then retry.');return}dlg.close();render();toast('Slip saved')}).catch(error=>toast(error.message));return false;
+  const file=f.get('img');readImg(file&&file.size?file:null).then(img=>{if(dialogGeneration!==operation)return;t.img=img;S[mod].tx.push(t);if(!save()){S[mod].tx.pop();saving=false;if(submitter)submitter.disabled=false;alert('SlipSync could not save this slip because browser storage is full or unavailable. Existing saved slips and photos were not changed. Export a backup and free space safely, then retry.');return}dlg.close();render();toast('Slip saved')}).catch(error=>{if(dialogGeneration!==operation)return;saving=false;if(submitter)submitter.disabled=false;toast(error.message)});return false;
  });
  const fs=$('#fStore'),fc=$('#fCat'),fb=$('#fuelBox');
  const syncFuel=()=>{fb.hidden=!/fuel/i.test(fc.options[fc.selectedIndex].text)};
@@ -430,28 +435,30 @@ function send(mod,how){
  if(how==='wa'){if(!c.wa){toast('Add a WhatsApp number in setup');return setup(mod)}window.open('https://wa.me/'+waNum(c.wa)+'?text='+encodeURIComponent(txt),'_blank')}
  else{if(!c.email){toast('Add an email address in setup');return setup(mod)}location.href='mailto:'+c.email+'?subject='+encodeURIComponent(txt.split('\n')[0])+'&body='+encodeURIComponent(txt+'\n\nSent with SlipSync')}
 }
+let pdfBusy=false;
 async function pdf(mod){
- let jsPDF;
- try{jsPDF=await SlipSyncPDF.ensureEngine(message=>toast(message))}
- catch(error){toast(error.message||'PDF engine could not load. Tap to retry.');return}
- toast('Preparing PDF…');
+ if(pdfBusy){toast('A PDF is already being prepared');return}
+ pdfBusy=true;const button=document.querySelector('[data-act="pdf"]');if(button){button.disabled=true;button.dataset.oldText=button.textContent;button.textContent='Preparing PDF…'}
+ const selectedMonth=MONTH,txt=summaryText(mod).split('\n'),calc=mod==='road'?roadCalc():budgetCalc(mod),list=calc.tx.map(t=>({...t})).sort((a,b)=>a.date.localeCompare(b.date)),cats=(S[mod].cats||[]).map(c=>({...c})),trips=mod==='road'?calc.trips.map(t=>({...t})).sort((a,b)=>a.date.localeCompare(b.date)):[];
+ try{
+ const jsPDF=await SlipSyncPDF.ensureEngine(message=>toast(message));toast('Preparing PDF…');
  const doc=new jsPDF({unit:'mm',format:'a4'});let y=20;
  const line=(t,s=10,b=false)=>{doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(s);const wrapped=doc.splitTextToSize?doc.splitTextToSize(String(t),180):[String(t)];wrapped.forEach(part=>{if(y>275){doc.addPage();y=20}doc.text(part,15,y);y+=s*.5+2})};
  doc.setFillColor(255,107,26);doc.rect(0,0,210,6,'F');
- const txt=summaryText(mod).split('\n');line(txt[0],16,true);txt.slice(1).forEach(l=>line(l,10,/TOTAL|Balance|Left:/.test(l)));
- const list=(mod==='road'?roadCalc().tx:budgetCalc(mod).tx).slice().sort((a,b)=>a.date.localeCompare(b.date));
+ line(txt[0],16,true);txt.slice(1).forEach(l=>line(l,10,/TOTAL|Balance|Left:/.test(l)));
  y+=4;line('Itemised',12,true);
- const cats=S[mod].cats||[];
  list.forEach(t=>{const c=cats.find(c=>c.id===t.cat);line(`${t.date}   ${(t.store||'').slice(0,28).padEnd(28)}  ${(c?c.name:t.cat||'').slice(0,20).padEnd(20)}  ${R(t.amt)}`,9)});
- if(mod==='road'){const tr=roadCalc().trips;if(tr.length){y+=4;line('Logbook',12,true);tr.sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>line(`${t.date}  ${t.from} → ${t.to}  ${t.purpose}  ${t.o1?t.o1+'-'+t.o2+'  ':''}${Math.round(t.km)} km`,9))}}
+ if(trips.length){y+=4;line('Logbook',12,true);trips.forEach(t=>line(`${t.date}  ${t.from} → ${t.to}  ${t.purpose}  ${t.o1?t.o1+'-'+t.o2+'  ':''}${Math.round(t.km)} km`,9))}
  const imgs=list.filter(t=>t.img),invalid=[];
  imgs.forEach((t,i)=>{doc.addPage();const top=15;doc.setFontSize(9);doc.text(`${t.date}  ${t.store||''}  ${R(t.amt)}`,15,top);try{const p=doc.getImageProperties(t.img),scale=Math.min(180/p.width,240/p.height);doc.addImage(t.img,p.fileType||'JPEG',15,top+5,p.width*scale,p.height*scale,undefined,'FAST')}catch(e){invalid.push(t)}});
  const missing=list.length-imgs.length;
  if(missing||invalid.length){doc.addPage();doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('Slip photo availability',15,20);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`${missing} saved ${missing===1?'purchase has':'purchases have'} no photo.`,15,30);if(invalid.length)doc.text(`${invalid.length} saved ${invalid.length===1?'photo could':'photos could'} not be embedded.`,15,38)}
- const name=`SlipSync-${mod}-${MONTH}.pdf`,blob=doc.output('blob'),file=new File([blob],name,{type:'application/pdf'});
+ const name=`SlipSync-${mod}-${selectedMonth}.pdf`,blob=doc.output('blob'),file=new File([blob],name,{type:'application/pdf'});
  const outcome=await SlipSyncPDF.shareOrDownload(file,{title:name,text:txt[0]});
  if(outcome==='downloaded')toast('PDF downloaded - attach it in WhatsApp or email');
  else if(outcome==='cancelled')toast('PDF sharing cancelled');
+ }catch(error){console.error('SlipSync PDF failed',error);toast((error&&error.message)||'Could not generate the PDF. Tap to retry.')}
+ finally{pdfBusy=false;if(button&&button.isConnected){button.disabled=false;button.textContent=button.dataset.oldText||'Share PDF';delete button.dataset.oldText}}
 }
 function csv(mod){
  let rows;

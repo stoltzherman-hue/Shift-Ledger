@@ -60,6 +60,16 @@ test('PDF engine loading is shared across repeated requests and falls back after
   assert.match(appended[0], /\/vendor\/jspdf\.umd\.min\.js$/);
 });
 
+test('terminal engine failure is actionable and a later tap can retry successfully', async () => {
+  const options = { onAppend(script) { script.onerror(new Error('unavailable')); } };
+  const { context, appended } = runtime(options);
+  await assert.rejects(context.SlipSyncPDF.ensureEngine(), /PDF engine could not load.*tap the PDF button to retry/i);
+  assert.equal(appended.length, 4);
+  const constructor = class SyntheticPdf {};
+  options.onAppend = (script, window) => { window.jspdf = { jsPDF: constructor }; script.onload(); };
+  assert.equal(await context.SlipSyncPDF.ensureEngine(), constructor);
+});
+
 test('PDF file sharing uses the native file share sheet when available', async () => {
   const shared = [];
   const file = { name: 'SlipSync-cur-2026-10.pdf', type: 'application/pdf' };

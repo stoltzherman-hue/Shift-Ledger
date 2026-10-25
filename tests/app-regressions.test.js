@@ -34,10 +34,13 @@ function runAppForWhatsApp() {
     querySelector() { return { innerHTML: '' }; },
     querySelectorAll() { return []; },
   };
-  const dialog = { showModal() {}, close() {} };
+  const dialog = { addEventListener() {}, showModal() {}, close() {} };
   const genericElement = {
     addEventListener() {},
     classList: { add() {}, remove() {}, toggle() {} },
+    dataset: {},
+    disabled: false,
+    isConnected: true,
     querySelector() { return null; },
     querySelectorAll() { return []; },
     setAttribute() {},
