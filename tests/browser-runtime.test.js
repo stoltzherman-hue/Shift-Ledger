@@ -5,7 +5,7 @@ const test = require('node:test');
 
 const cdpBase = process.env.SLIPSYNC_CDP_URL;
 const appBase = process.env.SLIPSYNC_APP_URL || 'http://127.0.0.1:4175';
-const downloadDir = process.env.SLIPSYNC_DOWNLOAD_DIR || path.join(process.env.TEMP || '.', 'slipsync-browser-downloads');
+const downloadRoot = process.env.SLIPSYNC_DOWNLOAD_DIR || path.join(process.env.TEMP || '.', 'slipsync-browser-downloads');
 
 class CdpClient {
   constructor(url) {
@@ -80,17 +80,18 @@ async function navigate(client, url) {
   await loaded;
 }
 
-async function nextDownload(client, action) {
+async function nextDownload(client, downloadDir, action) {
   const began = client.once('Browser.downloadWillBegin');
   try { await action(); }
   catch (error) { began.catch(() => {}); throw error; }
   const download = await began;
-  await client.once('Browser.downloadProgress', (event) => event.guid === download.guid && event.state === 'completed');
-  return { ...download, path: path.join(downloadDir, download.suggestedFilename) };
+  const completed = await client.once('Browser.downloadProgress', (event) => event.guid === download.guid && event.state === 'completed');
+  return { ...download, path: completed.filePath || path.join(downloadDir, download.suggestedFilename) };
 }
 
 test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths', { skip: !cdpBase }, async (t) => {
-  fs.mkdirSync(downloadDir, { recursive: true });
+  fs.mkdirSync(downloadRoot, { recursive: true });
+  const downloadDir = fs.mkdtempSync(path.join(downloadRoot, 'run-'));
   const targets = await (await fetch(`${cdpBase}/json/list`)).json();
   assert.ok(targets[0]?.webSocketDebuggerUrl, 'Chrome should expose a debuggable page');
   const client = new CdpClient(targets[0].webSocketDebuggerUrl);
@@ -110,8 +111,13 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
     ui: { mod: 'cur' },
     acct: { picked: ['cur'], trialStart: Date.now(), plan: 'all', mods: ['home', 'cur', 'road', 'shift'], annual: false },
   };
+  await navigate(client, `${appBase}/`);
+  await evaluate(client, `localStorage.removeItem('slipsync.suite.v1');sessionStorage.removeItem('__slipsyncRuntimeSeeded')`);
   await client.send('Page.addScriptToEvaluateOnNewDocument', { source: `
-    localStorage.setItem('slipsync.suite.v1', ${JSON.stringify(JSON.stringify(suiteState))});
+    if (!sessionStorage.getItem('__slipsyncRuntimeSeeded')) {
+      localStorage.setItem('slipsync.suite.v1', ${JSON.stringify(JSON.stringify(suiteState))});
+      sessionStorage.setItem('__slipsyncRuntimeSeeded','1');
+    }
     window.__opened = [];
     window.__alerts = [];
     window.open = (...args) => { window.__opened.push(args); return null; };
@@ -142,7 +148,7 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
   await t.test('CSV export uses a real browser download', async () => {
     await evaluate(client, `document.querySelector('.mods button[data-m="home"]').click()`);
     await evaluate(client, `Object.defineProperty(navigator,'canShare',{value:()=>false,configurable:true})`);
-    const download = await nextDownload(client, () => evaluate(client, `document.querySelector('[data-act="csv"]').click()`));
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, `document.querySelector('[data-act="csv"]').click()`));
     assert.match(download.suggestedFilename, /^SlipSync-home-\d{4}-\d{2}\.csv$/);
     const csv = fs.readFileSync(download.path, 'utf8');
     assert.equal(csv, [
@@ -200,7 +206,7 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
 
   await t.test('real jsPDF creates a multi-photo PDF with image objects and pages', async () => {
     await waitFor(client, `Boolean(window.jspdf && window.jspdf.jsPDF)`, 15000);
-    const download = await nextDownload(client, () => evaluate(client, 'downloadShiftSummary()'));
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, 'downloadShiftSummary()'));
     const pdf = fs.readFileSync(download.path);
     const text = pdf.toString('latin1');
     assert.equal((text.match(/\/Type \/Page\b/g) || []).length, 3);
@@ -214,9 +220,11 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
     const hidden = await evaluate(client, `(() => {openSlip(102);return document.querySelector('#slipThumbWrap').style.display})()`);
     assert.equal(hidden, 'none');
     await evaluate(client, 'closeSlip()');
-    const download = await nextDownload(client, () => evaluate(client, 'downloadShiftSummary()'));
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, 'downloadShiftSummary()'));
     const text = fs.readFileSync(download.path).toString('latin1');
     assert.equal((text.match(/\/Type \/Page\b/g) || []).length, 3);
+    assert.equal((text.match(/\/Subtype \/Image\b/g) || []).length, 1);
+    assert.match(text, /Slip photo availability/);
   });
 
   await t.test('jsPDF failure is reported and the CDN error handler injects the fallback source', async () => {
