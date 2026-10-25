@@ -34,10 +34,13 @@ function runAppForWhatsApp() {
     querySelector() { return { innerHTML: '' }; },
     querySelectorAll() { return []; },
   };
-  const dialog = { showModal() {}, close() {} };
+  const dialog = { addEventListener() {}, showModal() {}, close() {} };
   const genericElement = {
     addEventListener() {},
     classList: { add() {}, remove() {}, toggle() {} },
+    dataset: {},
+    disabled: false,
+    isConnected: true,
     querySelector() { return null; },
     querySelectorAll() { return []; },
     setAttribute() {},
@@ -81,7 +84,7 @@ function runAppForWhatsApp() {
   };
   context.window = context;
   vm.createContext(context);
-  vm.runInContext(`${appScript()}\n;globalThis.__send = send;globalThis.__csv = csv;`, context);
+  vm.runInContext(`${appScript()}\n;globalThis.__send = send;globalThis.__csv = csv;globalThis.__pdf=pdf;globalThis.__save=save;globalThis.__readImg=readImg;globalThis.__S=S;`, context);
   context.__send('cur', 'wa');
   return { context, downloads, nativeOpenCalls, dialogBody };
 }
@@ -95,6 +98,46 @@ test('Send via WhatsApp uses the browser opener with the encoded wa.me URL', () 
   assert.equal(dialogBody.innerHTML, undefined);
 });
 
+test('Home, Curator, and Road each generate an itemised PDF file with saved photos', async () => {
+  const { context } = runAppForWhatsApp();
+  const made = [];
+  const shared = [];
+  class FakePdf {
+    constructor() { this.pages = 1; this.images = []; this.texts = []; this.wrapCalls = 0; made.push(this); }
+    addImage(...args) { this.images.push(args); }
+    addPage() { this.pages += 1; }
+    getImageProperties() { return { width: 100, height: 200, fileType: 'JPEG' }; }
+    output(kind) { assert.equal(kind, 'blob'); return { synthetic: 'pdf' }; }
+    rect() {}
+    setFillColor() {}
+    setFont() {}
+    setFontSize() {}
+    splitTextToSize(value) { this.wrapCalls += 1; return [String(value)]; }
+    text(value) { this.texts.push(String(value)); }
+  }
+  context.SlipSyncPDF = {
+    async ensureEngine() { return FakePdf; },
+    async shareOrDownload(file) { shared.push(file); return 'shared'; },
+  };
+  const date = new Date().toISOString().slice(0, 10);
+  const photo = 'data:image/jpeg;base64,SYNTHETIC';
+  context.__S.home.cats = [{ id: 'home-food', name: 'Home food', limit: 500, type: 'must' }];
+  context.__S.home.tx = [{ id: 'h1', date, store: 'Synthetic Home Store', cat: 'home-food', type: 'must', amt: 45, img: photo }];
+  context.__S.cur.tx[0].img = photo;
+  context.__S.road.tx = [{ id: 'r1', date, store: 'Synthetic Fuel', cat: 'Fuel', reimb: true, amt: 75, img: photo }];
+  context.__S.road.trips = [{ id: 'trip', date, from: 'A', to: 'B', purpose: 'Synthetic visit', km: 10 }];
+
+  for (const mod of ['home', 'cur', 'road']) await context.__pdf(mod);
+
+  assert.deepEqual(shared.map((file) => file.name), ['home', 'cur', 'road'].map((mod) => `SlipSync-${mod}-${new Date().toISOString().slice(0, 7)}.pdf`));
+  assert.ok(shared.every((file) => file.type === 'application/pdf'));
+  assert.equal(made.length, 3);
+  assert.ok(made.every((doc) => doc.images.length === 1));
+  assert.ok(made.every((doc) => doc.texts.includes('Itemised')));
+  assert.ok(made.every((doc) => doc.wrapCalls > 0));
+  assert.ok(made[2].texts.includes('Logbook'));
+});
+
 test('CSV export downloads a synthetic Curator ledger without external transmission', () => {
   const { context, downloads } = runAppForWhatsApp();
 
@@ -106,4 +149,16 @@ test('CSV export downloads a synthetic Curator ledger without external transmiss
     '"Date","Store","Category","Priority","Who","Amount","Litres","Note"',
     `"${new Date().toISOString().slice(0, 10)}","Fictional, Store","Food ""Basics""","must","Test User","123.45","","quoted ""note"""`,
   ].join('\n'));
+});
+
+test('Suite storage failure is reported to the caller instead of silently claiming success', () => {
+  const { context } = runAppForWhatsApp();
+  context.localStorage.setItem = () => { throw Object.assign(new Error('full'), { name: 'QuotaExceededError' }); };
+  assert.equal(context.__save(), false);
+});
+
+test('Suite photo read failure rejects instead of leaving the save flow hanging', async () => {
+  const { context } = runAppForWhatsApp();
+  context.FileReader = class FailedReader { readAsDataURL() { this.onerror(); } };
+  await assert.rejects(context.__readImg({ size: 10 }), /Could not read the selected photo/);
 });

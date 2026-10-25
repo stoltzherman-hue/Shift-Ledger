@@ -93,8 +93,9 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
   fs.mkdirSync(downloadRoot, { recursive: true });
   const downloadDir = fs.mkdtempSync(path.join(downloadRoot, 'run-'));
   const targets = await (await fetch(`${cdpBase}/json/list`)).json();
-  assert.ok(targets[0]?.webSocketDebuggerUrl, 'Chrome should expose a debuggable page');
-  const client = new CdpClient(targets[0].webSocketDebuggerUrl);
+  const pageTarget = targets.find((target) => target.type === 'page');
+  assert.ok(pageTarget?.webSocketDebuggerUrl, 'Chrome should expose a debuggable page');
+  const client = new CdpClient(pageTarget.webSocketDebuggerUrl);
   t.after(() => client.close());
   await client.send('Page.enable');
   await client.send('Runtime.enable');
@@ -112,6 +113,7 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
     acct: { picked: ['cur'], trialStart: Date.now(), plan: 'all', mods: ['home', 'cur', 'road', 'shift'], annual: false },
   };
   await navigate(client, `${appBase}/`);
+  await waitFor(client, `location.origin === ${JSON.stringify(new URL(appBase).origin)} && document.readyState === 'complete'`);
   await evaluate(client, `localStorage.removeItem('slipsync.suite.v1');sessionStorage.removeItem('__slipsyncRuntimeSeeded')`);
   await client.send('Page.addScriptToEvaluateOnNewDocument', { source: `
     if (!sessionStorage.getItem('__slipsyncRuntimeSeeded')) {
@@ -145,6 +147,150 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
       { firstOpen: true, firstClosed: true, reopened: true, finalClosed: true });
   });
 
+  await t.test('Road picker replacement dialog saves exactly one expense', async () => {
+    await evaluate(client, `document.querySelector('.mods button[data-m="road"]').click();document.querySelector('#fab').click();document.querySelector('[data-pick="slip"]').click()`);
+    await waitFor(client, `document.querySelector('#dlg').open && document.querySelector('#dlgBody h3')?.textContent==='Add a road expense'`);
+    const result = await evaluate(client, `(async () => {
+      const before=S.road.tx.length;document.querySelector('#dlgBody [name="amt"]').value='55';document.querySelector('#dlgBody [name="store"]').value='Synthetic Road Store';
+      document.querySelector('#dlgBody button.pri').click();await new Promise(resolve=>setTimeout(resolve,0));return{before,after:S.road.tx.length,dialogOpen:document.querySelector('#dlg').open};
+    })()`);
+    assert.deepEqual(result, { before: 0, after: 1, dialogOpen: false });
+    await evaluate(client, `document.querySelector('.mods button[data-m="cur"]').click()`);
+  });
+
+  await t.test('delayed photo reads cannot duplicate saves or commit after cancel and reopen', async () => {
+    const result = await evaluate(client, `(async () => {
+      const originalReadImg=readImg,photo='data:image/jpeg;base64,SYNTHETIC_DELAYED';
+      S.cur.cats=[{id:'supplies',name:'Supplies',limit:1000,type:'must'}];
+      const fill=amount=>{document.querySelector('#dlgBody [name="amt"]').value=String(amount);document.querySelector('#dlgBody [name="store"]').value='Synthetic Delayed Store'};
+      window.__photoResolvers=[];readImg=()=>new Promise(resolve=>window.__photoResolvers.push(resolve));
+      const before=S.cur.tx.length;
+      addSlip('cur');fill(10);
+      const saveButton=document.querySelector('#dlgBody button.pri');saveButton.click();saveButton.click();
+      const firstResolvers=window.__photoResolvers.splice(0);firstResolvers.forEach(resolve=>resolve(photo));
+      await new Promise(resolve=>setTimeout(resolve,0));
+      const afterDouble=S.cur.tx.length;
+
+      addSlip('cur');fill(20);document.querySelector('#dlgBody button.pri').click();
+      document.querySelector('#dlgBody button[value="cancel"]').click();
+      document.querySelector('[data-act="setup"]').click();
+      const secondResolvers=window.__photoResolvers.splice(0);secondResolvers.forEach(resolve=>resolve(photo));
+      await new Promise(resolve=>setTimeout(resolve,0));
+      const outcome={before,afterDouble,afterCancel:S.cur.tx.length,dialogOpen:document.querySelector('#dlg').open,heading:document.querySelector('#dlgBody h3').textContent};
+      document.querySelector('#dlgBody button[value="cancel"]').click();readImg=originalReadImg;return outcome;
+    })()`);
+    assert.deepEqual(result, { before: 0, afterDouble: 1, afterCancel: 1, dialogOpen: true, heading: 'Client & float' });
+  });
+
+  await t.test('Suite quota failure keeps the submitted form open and does not append the slip', async () => {
+    const result = await evaluate(client, `(async () => {
+      window.__alerts=[];const before=S.cur.tx.length,original=Storage.prototype.setItem;
+      S.cur.cats=[{id:'supplies',name:'Supplies',limit:1000,type:'must'}];
+      addSlip('cur');document.querySelector('#dlgBody [name="amt"]').value='88';document.querySelector('#dlgBody [name="store"]').value='Synthetic Quota Store';
+      Storage.prototype.setItem=function(key,value){if(key==='slipsync.suite.v1')throw new DOMException('full','QuotaExceededError');return original.call(this,key,value)};
+      document.querySelector('#dlgBody button.pri').click();await new Promise(resolve=>setTimeout(resolve,0));Storage.prototype.setItem=original;
+      const outcome={before,after:S.cur.tx.length,open:document.querySelector('#dlg').open,amount:document.querySelector('#dlgBody [name="amt"]').value,alert:window.__alerts.at(-1)};
+      document.querySelector('#dlgBody button[value="cancel"]').click();return outcome;
+    })()`);
+    assert.deepEqual(result, { before: 1, after: 1, open: true, amount: '88', alert: 'SlipSync could not save this slip because browser storage is full or unavailable. Existing saved slips and photos were not changed. Export a backup and free space safely, then retry.' });
+  });
+
+  await t.test('delayed PDF loading snapshots module and month and ignores repeated requests', async () => {
+    await evaluate(client, `(() => {
+      const canvas=document.createElement('canvas');canvas.width=80;canvas.height=120;
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,80,120);ctx.fillStyle='#111';ctx.fillText('SYNTHETIC',5,40);
+      const state=JSON.parse(localStorage.getItem('slipsync.suite.v1')),date=new Date().toISOString().slice(0,10);
+      state.cur.cats=[{id:'supplies',name:'Supplies',limit:1000,type:'must'}];state.cur.tx=[{id:'c1',date,store:'Synthetic Curator Store',cat:'supplies',type:'must',amt:234.56,img:canvas.toDataURL('image/jpeg',0.8)}];state.ui.mod='cur';
+      localStorage.setItem('slipsync.suite.v1',JSON.stringify(state));location.reload();
+    })()`);
+    await waitFor(client, `document.readyState==='complete' && Boolean(window.jspdf && SlipSyncPDF)`);
+    await evaluate(client, `Object.defineProperty(navigator,'canShare',{value:()=>false,configurable:true})`);
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, `(() => {
+      const engine=window.jspdf.jsPDF;window.__pdfOutputCount=0;window.__originalEnsure=SlipSyncPDF.ensureEngine;window.__originalShare=SlipSyncPDF.shareOrDownload;
+      let release;SlipSyncPDF.ensureEngine=()=>new Promise(resolve=>{release=resolve});SlipSyncPDF.shareOrDownload=async(...args)=>{window.__pdfOutputCount++;return window.__originalShare(...args)};
+      pdf('cur');document.querySelector('#mPrev').click();document.querySelector('.mods button[data-m="home"]').click();pdf('home');setTimeout(()=>release(engine),20);
+    })()`));
+    const text = fs.readFileSync(download.path).toString('latin1').replace(/\xA0/g, ' ');
+    assert.equal(download.suggestedFilename, `SlipSync-cur-${new Date().toISOString().slice(0, 7)}.pdf`);
+    assert.match(text, /Purchases statement/);
+    assert.match(text, /Float: R 1 000,00/);
+    assert.match(text, /Spent: R 234,56/);
+    assert.match(text, /Balance: R 765,44/);
+    const outputs = await evaluate(client, `window.__pdfOutputCount`);
+    assert.equal(outputs, 1);
+    await evaluate(client, `SlipSyncPDF.ensureEngine=window.__originalEnsure;SlipSyncPDF.shareOrDownload=window.__originalShare;location.reload()`);
+    await waitFor(client, `document.readyState==='complete' && Boolean(window.jspdf && SlipSyncPDF)`);
+  });
+
+  await t.test('Suite PDF failure shows an actionable error and releases the busy button', async () => {
+    const result = await evaluate(client, `(async () => {
+      document.querySelector('.mods button[data-m="cur"]').click();const original=SlipSyncPDF.shareOrDownload;SlipSyncPDF.shareOrDownload=async()=>{throw new Error('Synthetic share failure')};
+      await pdf('cur');SlipSyncPDF.shareOrDownload=original;const button=document.querySelector('[data-act="pdf"]');return{toast:document.querySelector('#toast').textContent,disabled:button.disabled,label:button.textContent};
+    })()`);
+    assert.deepEqual(result, { toast: 'Synthetic share failure', disabled: false, label: 'Share PDF statement' });
+  });
+
+  await t.test('Home, Curator, and Road create real itemised photo PDFs with download fallback', async () => {
+    await evaluate(client, `(() => {
+      const canvas=document.createElement('canvas');canvas.width=80;canvas.height=120;
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,80,120);ctx.fillStyle='#111';ctx.fillText('SYNTHETIC',5,40);
+      const photo=canvas.toDataURL('image/jpeg',0.8),date=new Date().toISOString().slice(0,10);
+      const state=JSON.parse(localStorage.getItem('slipsync.suite.v1'));
+      state.home.tx=[{id:'h1',date,store:'Synthetic Home Store',cat:'food',type:'must',who:'Test User',amt:123.45,img:photo}];
+      state.cur.cats=[{id:'supplies',name:'Supplies',limit:1000,type:'must'}];
+      state.cur.tx=[{id:'c1',date,store:'Synthetic Curator Store',cat:'supplies',type:'must',amt:234.56,img:photo}];
+      state.road.tx=[{id:'r1',date,store:'Synthetic Fuel',cat:'Fuel',reimb:true,amt:345.67,img:photo}];
+      state.road.trips=[{id:'t1',date,from:'A',to:'B',purpose:'Synthetic client visit',km:10}];
+      localStorage.setItem('slipsync.suite.v1',JSON.stringify(state));location.reload();
+    })()`);
+    await waitFor(client, `document.readyState==='complete' && Boolean(window.jspdf && SlipSyncPDF)`);
+    await evaluate(client, `Object.defineProperty(navigator,'canShare',{value:()=>false,configurable:true})`);
+    const expectedText = { home: /Family budget/, cur: /Purchases statement/, road: /SlipSync Road/ };
+    for (const mod of ['home','cur','road']) {
+      await evaluate(client, `document.querySelector('.mods button[data-m="${mod}"]').click()`);
+      const download = await nextDownload(client, downloadDir, () => evaluate(client, `document.querySelector('[data-act="pdf"]').click()`));
+      assert.equal(download.suggestedFilename, `SlipSync-${mod}-${new Date().toISOString().slice(0, 7)}.pdf`);
+      const pdf = fs.readFileSync(download.path);
+      const text = pdf.toString('latin1');
+      assert.ok(pdf.length > 3000, `${mod} PDF should contain real document bytes`);
+      assert.ok((text.match(/\/Type \/Page\b/g) || []).length >= 2, `${mod} PDF should include a photo page`);
+      assert.ok((text.match(/\/Subtype \/Image\b/g) || []).length >= 1, `${mod} PDF should contain a receipt image object`);
+      assert.match(text, expectedText[mod]);
+      assert.match(text, /Itemised/);
+    }
+  });
+
+  await t.test('Road reimbursement PDF contains the total claim and full logbook', async () => {
+    await evaluate(client, `S.road.cfg.mode='reimb';S.road.cfg.rate=4.95;document.querySelector('.mods button[data-m="road"]').click()`);
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, `document.querySelector('[data-act="pdf"]').click()`));
+    const text = fs.readFileSync(download.path).toString('latin1');
+    assert.match(text, /TOTAL CLAIM/);
+    assert.match(text, /Business km/);
+    assert.match(text, /Logbook/);
+  });
+
+  await t.test('Road SARS logbook CSV downloads the synthetic trip', async () => {
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, `document.querySelector('[data-act="csv"]').click()`));
+    assert.equal(download.suggestedFilename, `SlipSync-logbook-${new Date().toISOString().slice(0, 7)}.csv`);
+    const csv = fs.readFileSync(download.path, 'utf8');
+    assert.match(csv, /^"Date","From","To","Business reason","Odometer start","Odometer end","Km","Value at rate"/);
+    assert.match(csv, /"A","B","Synthetic client visit"/);
+  });
+
+  await t.test('Purchase statement offers a real PDF File to the native share API', async () => {
+    const payload = await evaluate(client, `(async () => {
+      window.__sharedPdf=null;
+      Object.defineProperty(navigator,'canShare',{value:p=>Boolean(p&&p.files&&p.files[0]&&p.files[0].type==='application/pdf'),configurable:true});
+      Object.defineProperty(navigator,'share',{value:async p=>{const f=p.files[0];window.__sharedPdf={name:f.name,type:f.type,size:f.size,title:p.title,text:p.text}},configurable:true});
+      document.querySelector('.mods button[data-m="cur"]').click();
+      await pdf('cur');return window.__sharedPdf;
+    })()`);
+    assert.equal(payload.name, `SlipSync-cur-${new Date().toISOString().slice(0, 7)}.pdf`);
+    assert.equal(payload.type, 'application/pdf');
+    assert.ok(payload.size > 3000);
+    assert.match(payload.text, /^Purchases statement/);
+  });
+
   await t.test('CSV export uses a real browser download', async () => {
     await evaluate(client, `document.querySelector('.mods button[data-m="home"]').click()`);
     await evaluate(client, `Object.defineProperty(navigator,'canShare',{value:()=>false,configurable:true})`);
@@ -153,7 +299,7 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
     const csv = fs.readFileSync(download.path, 'utf8');
     assert.equal(csv, [
       '"Date","Store","Category","Priority","Who","Amount","Litres","Note"',
-      `"${new Date().toISOString().slice(0, 10)}","Fictional, Store","Food ""Basics""","must","Test User","123.45","","quoted ""note"""`,
+      `"${new Date().toISOString().slice(0, 10)}","Synthetic Home Store","Food ""Basics""","must","Test User","123.45","",""`,
     ].join('\n'));
   });
 
@@ -188,6 +334,15 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
     assert.equal(display.shown, 'block');
     assert.match(display.src, /^data:image\/jpeg;base64/);
     await evaluate(client, 'closeSlip()');
+  });
+
+  await t.test('Shift backup JSON preserves both synthetic photos', async () => {
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, 'exportData()'));
+    assert.match(download.suggestedFilename, /^shiftledger-backup-\d{4}-\d{2}-\d{2}\.json$/);
+    const backup = JSON.parse(fs.readFileSync(download.path, 'utf8'));
+    assert.equal(backup.app, 'SlipSync Shift');
+    assert.equal(backup.slips.length, 2);
+    assert.equal(backup.slips.filter((slip) => typeof slip.img === 'string' && slip.img.startsWith('data:image/')).length, 2);
   });
 
   await t.test('quota failure preserves stored photos, rolls back the slip, and keeps unsaved form visible', async () => {
@@ -227,15 +382,15 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
     assert.match(text, /Slip photo availability/);
   });
 
-  await t.test('jsPDF failure is reported and the CDN error handler injects the fallback source', async () => {
-    const result = await evaluate(client, `(() => {
-      window.__alerts=[];const saved=window.jspdf;window.jspdf=undefined;downloadShiftSummary();window.jspdf=saved;
-      const primary=[...document.scripts].find(s=>s.src.includes('cdn.jsdelivr.net/npm/jspdf'));
-      primary.onerror();
-      return {alert:window.__alerts[0],fallback:[...document.scripts].some(s=>s.src.includes('unpkg.com/jspdf@2.5.2'))};
-    })()`);
-    assert.match(result.alert, /^Could not generate the PDF: PDF library did not load/);
-    assert.equal(result.fallback, true);
+  await t.test('local PDF engine loads when every remote script is blocked', async () => {
+    await client.send('Network.enable');
+    await client.send('Network.setBlockedURLs', { urls: ['https://*'] });
+    await navigate(client, `${appBase}/app`);
+    await waitFor(client, `Boolean(window.jspdf && window.jspdf.jsPDF && window.SlipSyncPDF)`);
+    const sources = await evaluate(client, `[...document.scripts].map(script=>script.src)`);
+    assert.ok(sources.some((src) => src.endsWith('/vendor/jspdf.umd.min.js')));
+    assert.ok(sources.some((src) => src.endsWith('/pdf-support.js')));
+    await client.send('Network.setBlockedURLs', { urls: [] });
   });
 
   const screenshot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
