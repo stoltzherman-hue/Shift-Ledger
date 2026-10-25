@@ -6,8 +6,9 @@ const vm = require('node:vm');
 const source = fs.readFileSync(new URL('../app.js', `file://${__filename}`), 'utf8');
 
 function functionSource(name) {
-  const start = source.indexOf(`function ${name}(`);
+  let start = source.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `missing function ${name}`);
+  if (source.slice(Math.max(0, start - 6), start) === 'async ') start -= 6;
   const brace = source.indexOf('{', start);
   let depth = 0;
   let quote = null;
@@ -96,7 +97,7 @@ test('repeated successful saves keep the original and newly attached photos', ()
   assert.deepEqual(harness.alerts, []);
 });
 
-test('Shift PDF export includes each persisted synthetic photo and downloads the file', () => {
+test('Shift PDF export includes each persisted synthetic photo and offers the file to native sharing', async () => {
   const saved = [];
   class FakePdf {
     constructor() {
@@ -111,7 +112,7 @@ test('Shift PDF export includes each persisted synthetic photo and downloads the
     addImage(...args) { this.images.push(args); }
     addPage() { this.pages += 1; }
     getImageProperties() { return { width: 100, height: 200, fileType: 'JPEG' }; }
-    save(name) { this.savedAs = name; }
+    output(kind) { assert.equal(kind, 'blob'); return { synthetic: 'pdf' }; }
     line() {}
     rect() {}
     setDrawColor() {}
@@ -142,14 +143,22 @@ test('Shift PDF export includes each persisted synthetic photo and downloads the
       return { n: list.length, sales, tips, spend: sales / list.length, largest: 200, avg: tips / sales * 100, card: 100, cash: 200 };
     },
     todayKey() { return day; },
-    window: { jspdf: { jsPDF: FakePdf } },
+    document: { getElementById() { return { disabled: false, textContent: '' }; } },
+    File: class FakeFile { constructor(parts, name, options) { this.parts = parts; this.name = name; this.type = options.type; } },
+    SlipSyncPDF: {
+      async ensureEngine() { return FakePdf; },
+      async shareOrDownload(file) { context.sharedFile = file; return 'shared'; },
+    },
+    window: {},
   };
   vm.createContext(context);
-  vm.runInContext(`${functionSource('downloadShiftSummary')}\ndownloadShiftSummary();`, context);
+  vm.runInContext(`${functionSource('downloadShiftSummary')}\nglobalThis.result=downloadShiftSummary();`, context);
+  await context.result;
 
   assert.equal(saved.length, 1);
   assert.equal(saved[0].images.length, 2);
   assert.equal(saved[0].pages, 3);
-  assert.equal(saved[0].savedAs, 'ShiftLedger-Test-Waiter-2026-10-25.pdf');
+  assert.equal(context.sharedFile.name, 'SlipSync-Shift-Test-Waiter-2026-10-25.pdf');
+  assert.equal(context.sharedFile.type, 'application/pdf');
   assert.deepEqual(alerts, []);
 });

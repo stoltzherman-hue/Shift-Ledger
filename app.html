@@ -6,7 +6,8 @@
 <title>SlipSync — Shift, Home, Curator & Road</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<script src="/vendor/jspdf.umd.min.js"></script>
+<script src="/pdf-support.js"></script>
 <style>
 :root{--bg:#0C0C0A;--panel:#16160f;--line:#2a2a22;--ink:#F4F1E8;--mute:#8d8a7c;--fire:#FF6B1A;--ok:#7BD88F;--warn:#FFC53D;--bad:#FF4D4D;--acc:var(--fire);
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -124,7 +125,7 @@ let S;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S){S=JSON.parse(JSON.stringify(DEF));S.home.cats=mkCats(DEF.home.cats);S.cur.cats=mkCats(DEF.cur.cats)}
 S.ui=S.ui||{mod:'home'};
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Storage full — export and clear old slips')}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){toast('Storage full - export a backup and free space safely');return false}}
 
 /* ============ HELPERS ============ */
 const $=s=>document.querySelector(s);
@@ -157,7 +158,7 @@ const GUESS=[
 function guessCat(store,cats){for(const [re,n] of GUESS){if(re.test(store)){for(const opt of n.split('|')){const c=cats.find(c=>c.name.toLowerCase()===opt.toLowerCase());if(c)return c}}}return null}
 
 /* Image capture → compressed dataURL (keeps localStorage lean) */
-function readImg(file){return new Promise(res=>{if(!file)return res(null);const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,900/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.6))};im.src=fr.result};fr.readAsDataURL(file)})}
+function readImg(file){return new Promise((res,rej)=>{if(!file)return res(null);const fail=()=>rej(new Error('Could not read the selected photo. Choose it again or save without a photo.'));const fr=new FileReader();fr.onerror=fail;fr.onload=()=>{const im=new Image();im.onerror=fail;im.onload=()=>{try{const k=Math.min(1,900/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.6))}catch(e){fail()}};im.src=fr.result};fr.readAsDataURL(file)})}
 
 /* ============ BUDGET ENGINE (Home + Curator) ============ */
 function budgetCalc(mod,m=MONTH){
@@ -317,7 +318,7 @@ function viewBudget(mod){
  const mustP=b.spent?b.must/b.spent*100:0;
  const envs=D.cats.map(c=>{const s=b.byCat[c.id]||0,l=+c.limit||0,p=l?Math.min(100,s/l*100):0;const col=s>l&&l?'var(--bad)':(pr.p<1&&l&&s/Math.max(pr.p,.05)>l*1.1?'var(--warn)':'var(--acc)');
   return `<div class="env" data-cat="${c.id}"><div class="row"><span class="nm">${esc(c.name)}<span class="tag">${c.type==='nice'?'Nice to have':'Must have'}</span></span><span class="left num">${l?(l-s>=0?R0(l-s)+' left':R0(s-l)+' over'):R0(s)}</span></div><div class="track"><i style="width:${p}%;background:${col}"></i></div></div>`}).join('');
- const actions=mod==='cur'?`<div class="btns"><button class="btn pri" data-act="send-wa">Send via WhatsApp</button><button class="btn pri" data-act="send-mail">Send via email</button><button class="btn" data-act="pdf">Share PDF statement</button><button class="btn" data-act="setup">Client & float</button></div>`
+ const actions=mod==='cur'?`<div class="btns"><button class="btn pri" data-act="send-wa">Send text via WhatsApp</button><button class="btn pri" data-act="send-mail">Send text via email</button><button class="btn" data-act="pdf">Share PDF statement</button><button class="btn" data-act="setup">Client & float</button></div>`
   :`<div class="btns"><button class="btn" data-act="pdf">Month report PDF</button><button class="btn" data-act="csv">Export CSV</button><button class="btn" data-act="setup">Budget & envelopes</button></div>`;
  const unallocated=mod==='cur'?(+D.cfg.float||0)-D.cats.reduce((a,c)=>a+ +c.limit,0):(+D.cfg.income||0)-b.total;
  const zb=mod==='home'&&+D.cfg.income>0?`<p class="ins ${unallocated<0?'bad':unallocated>0?'warn':'ok'}">${unallocated===0?'Every rand of income has a job. That’s a zero-based budget — nicely done.':unallocated>0?`<b class="num">${R0(unallocated)}</b> of income isn’t in an envelope yet. Give it a job, or move it to Savings.`:`Envelopes add up to <b class="num">${R0(-unallocated)}</b> more than income.`}</p>`:'';
@@ -332,7 +333,7 @@ function viewRoad(){
   `<section class="hero"><small>${lbl}</small><div class="big num">${R0(r.claimTotal)}</div><div class="stats"><div><span>Expenses</span><b class="num">${R0(r.claim)}</b></div><div><span>Business km</span><b class="num">${Math.round(r.km)}</b></div><div><span>Km value</span><b class="num">${R0(r.kmVal)}</b></div></div></section>`;
  const cats=Object.entries(r.byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="env"><div class="row"><span class="nm">${esc(k)}</span><span class="left num">${R0(v)}</span></div><div class="track"><i style="width:${r.spent?v/r.spent*100:0}%"></i></div></div>`).join('')||'<p class="empty">Spending by category shows up here.</p>';
  const trips=r.trips.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(t=>`<div class="tx"><div class="th" aria-hidden="true">🛣️</div><div class="mid"><div>${esc(t.from||'?')} → ${esc(t.to||'?')}</div><div class="sub">${new Date(t.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'})} · ${esc(t.purpose||'No business reason')}</div></div><b class="num">${Math.round(t.km)} km</b><button class="del" data-del="road:trips:${t.id}" aria-label="Delete">✕</button></div>`).join('')||'<p class="empty">No trips logged. Log odometer readings to build a SARS-ready logbook.</p>';
- return big+`<div class="btns"><button class="btn pri" data-act="send-wa">Send claim via WhatsApp</button><button class="btn pri" data-act="send-mail">Email claim</button><button class="btn" data-act="pdf">Claim pack PDF</button><button class="btn" data-act="csv">SARS logbook CSV</button><button class="btn" data-act="setup">Allowance & manager</button></div>`
+ return big+`<div class="btns"><button class="btn pri" data-act="send-wa">Send claim text via WhatsApp</button><button class="btn pri" data-act="send-mail">Email claim text</button><button class="btn" data-act="pdf">Share claim pack PDF</button><button class="btn" data-act="csv">SARS logbook CSV</button><button class="btn" data-act="setup">Allowance & manager</button></div>`
  +insightsBlock(roadInsights())+`<h2>Where it went</h2>${cats}<h2>Trips</h2>${trips}<h2>Slips</h2>${txList(r.tx,'road')}`
 }
 
@@ -370,7 +371,7 @@ function addSlip(mod,kind='slip'){
   const amt=parseFloat(String(f.get('amt')).replace(/\s/g,'').replace(',','.'));if(!(amt>0)){toast('Enter an amount');return false}
   const t={id:uid(),amt,store:f.get('store'),cat:f.get('cat'),date:f.get('date'),note:f.get('note'),who:f.get('who')||'',litres:parseFloat(String(f.get('litres')||'').replace(',','.'))||0};
   if(mod==='road')t.reimb=f.get('reimb')==='1';else t.type=f.get('type');
-  const file=f.get('img');readImg(file&&file.size?file:null).then(img=>{t.img=img;S[mod].tx.push(t);save();render();toast('Slip saved')});
+  const file=f.get('img');readImg(file&&file.size?file:null).then(img=>{t.img=img;S[mod].tx.push(t);if(!save()){S[mod].tx.pop();alert('SlipSync could not save this slip because browser storage is full or unavailable. Existing saved slips and photos were not changed. Export a backup and free space safely, then retry.');return}dlg.close();render();toast('Slip saved')}).catch(error=>toast(error.message));return false;
  });
  const fs=$('#fStore'),fc=$('#fCat'),fb=$('#fuelBox');
  const syncFuel=()=>{fb.hidden=!/fuel/i.test(fc.options[fc.selectedIndex].text)};
@@ -419,10 +420,10 @@ function summaryText(mod){
  if(mod==='road'){const r=roadCalc(),c=S.road.cfg;
   return `SlipSync Road — ${mLabel(MONTH)}\n${c.name||''}${c.company?' ('+c.company+')':''}\n\n`+
   (c.mode==='allowance'?`Allowance: ${R(r.allow)}\nSpent: ${R(r.spent)}\nLeft: ${R(r.left)}\n`:`Expenses to claim: ${R(r.claim)}\nBusiness km: ${Math.round(r.km)} × ${R(c.rate)} = ${R(r.kmVal)}\nTOTAL CLAIM: ${R(r.claimTotal)}\n`)+
-  `\nBy category:\n`+Object.entries(r.byCat).map(([k,v])=>`• ${k}: ${R(v)}`).join('\n')+`\n\n${r.tx.filter(t=>t.img).length}/${r.tx.length} slips attached. Full claim pack PDF to follow.`}
+  `\nBy category:\n`+Object.entries(r.byCat).map(([k,v])=>`• ${k}: ${R(v)}`).join('\n')+`\n\n${r.tx.filter(t=>t.img).length}/${r.tx.length} saved slip photos are available. Use Share claim pack PDF to send the PDF file.`}
  const D=S[mod],b=budgetCalc(mod);
  const head=mod==='cur'?`Purchases statement — ${mLabel(MONTH)}\nFor: ${D.cfg.client||'client'}\nFrom: ${D.cfg.me||''}\n\nFloat: ${R(b.total)}\nSpent: ${R(b.spent)}\nBalance: ${R(b.left)}\n`:`Family budget — ${mLabel(MONTH)}\nBudget: ${R(b.total)}\nSpent: ${R(b.spent)}\nLeft: ${R(b.left)}\n`;
- return head+`\nBy category:\n`+D.cats.filter(c=>b.byCat[c.id]).map(c=>`• ${c.name}: ${R(b.byCat[c.id])}`).join('\n')+`\n\n${b.tx.length} purchases, ${b.tx.filter(t=>t.img).length} with slip photos.`
+ return head+`\nBy category:\n`+D.cats.filter(c=>b.byCat[c.id]).map(c=>`• ${c.name}: ${R(b.byCat[c.id])}`).join('\n')+`\n\n${b.tx.length} purchases, ${b.tx.filter(t=>t.img).length} with saved slip photos. Use the PDF button to share the file.`
 }
 function send(mod,how){
  const c=S[mod].cfg,txt=summaryText(mod);
@@ -430,9 +431,12 @@ function send(mod,how){
  else{if(!c.email){toast('Add an email address in setup');return setup(mod)}location.href='mailto:'+c.email+'?subject='+encodeURIComponent(txt.split('\n')[0])+'&body='+encodeURIComponent(txt+'\n\nSent with SlipSync')}
 }
 async function pdf(mod){
- if(!window.jspdf){toast('PDF engine still loading');return}
- const {jsPDF}=window.jspdf,doc=new jsPDF({unit:'mm',format:'a4'});let y=20;
- const line=(t,s=10,b=false)=>{if(y>275){doc.addPage();y=20}doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(s);doc.text(String(t),15,y);y+=s*.5+2};
+ let jsPDF;
+ try{jsPDF=await SlipSyncPDF.ensureEngine(message=>toast(message))}
+ catch(error){toast(error.message||'PDF engine could not load. Tap to retry.');return}
+ toast('Preparing PDF…');
+ const doc=new jsPDF({unit:'mm',format:'a4'});let y=20;
+ const line=(t,s=10,b=false)=>{doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(s);const wrapped=doc.splitTextToSize?doc.splitTextToSize(String(t),180):[String(t)];wrapped.forEach(part=>{if(y>275){doc.addPage();y=20}doc.text(part,15,y);y+=s*.5+2})};
  doc.setFillColor(255,107,26);doc.rect(0,0,210,6,'F');
  const txt=summaryText(mod).split('\n');line(txt[0],16,true);txt.slice(1).forEach(l=>line(l,10,/TOTAL|Balance|Left:/.test(l)));
  const list=(mod==='road'?roadCalc().tx:budgetCalc(mod).tx).slice().sort((a,b)=>a.date.localeCompare(b.date));
@@ -440,11 +444,14 @@ async function pdf(mod){
  const cats=S[mod].cats||[];
  list.forEach(t=>{const c=cats.find(c=>c.id===t.cat);line(`${t.date}   ${(t.store||'').slice(0,28).padEnd(28)}  ${(c?c.name:t.cat||'').slice(0,20).padEnd(20)}  ${R(t.amt)}`,9)});
  if(mod==='road'){const tr=roadCalc().trips;if(tr.length){y+=4;line('Logbook',12,true);tr.sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>line(`${t.date}  ${t.from} → ${t.to}  ${t.purpose}  ${t.o1?t.o1+'-'+t.o2+'  ':''}${Math.round(t.km)} km`,9))}}
- const imgs=list.filter(t=>t.img);
- imgs.forEach((t,i)=>{if(i%2===0){doc.addPage();y=15}const top=i%2===0?15:150;doc.setFontSize(9);doc.text(`${t.date}  ${t.store||''}  ${R(t.amt)}`,15,top);try{doc.addImage(t.img,'JPEG',15,top+3,90,125,undefined,'FAST')}catch(e){}});
+ const imgs=list.filter(t=>t.img),invalid=[];
+ imgs.forEach((t,i)=>{doc.addPage();const top=15;doc.setFontSize(9);doc.text(`${t.date}  ${t.store||''}  ${R(t.amt)}`,15,top);try{const p=doc.getImageProperties(t.img),scale=Math.min(180/p.width,240/p.height);doc.addImage(t.img,p.fileType||'JPEG',15,top+5,p.width*scale,p.height*scale,undefined,'FAST')}catch(e){invalid.push(t)}});
+ const missing=list.length-imgs.length;
+ if(missing||invalid.length){doc.addPage();doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('Slip photo availability',15,20);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`${missing} saved ${missing===1?'purchase has':'purchases have'} no photo.`,15,30);if(invalid.length)doc.text(`${invalid.length} saved ${invalid.length===1?'photo could':'photos could'} not be embedded.`,15,38)}
  const name=`SlipSync-${mod}-${MONTH}.pdf`,blob=doc.output('blob'),file=new File([blob],name,{type:'application/pdf'});
- if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name,text:txt[0]})}catch(e){}}
- else{doc.save(name)}
+ const outcome=await SlipSyncPDF.shareOrDownload(file,{title:name,text:txt[0]});
+ if(outcome==='downloaded')toast('PDF downloaded - attach it in WhatsApp or email');
+ else if(outcome==='cancelled')toast('PDF sharing cancelled');
 }
 function csv(mod){
  let rows;

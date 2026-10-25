@@ -385,9 +385,11 @@ function renderTodayWaiter(){const el=document.getElementById('todayWaiter');if(
 function checkFirstUse(){if(!cfg.waiterName){const m=document.getElementById('nameModal');m.style.display='flex'}}
 
 /* ── SHIFT SUMMARY PDF ── */
-function downloadShiftSummary(){
+async function downloadShiftSummary(){
+  const button=document.getElementById('shiftPdfButton');
+  if(button){button.disabled=true;button.textContent='Preparing PDF…'}
   try {
-    if(!window.jspdf || !window.jspdf.jsPDF) throw new Error('PDF library did not load. Check your internet connection and reload Shift.');
+    const jsPDF=await SlipSyncPDF.ensureEngine();
   const today=todayKey(new Date());
   const list=slipsForDay(today);
   if(list.length===0){alert('No tables captured today yet. Add some slips first.');return}
@@ -395,7 +397,6 @@ function downloadShiftSummary(){
   const d=new Date();
   const waiter=cfg.waiterName||'Waiter';
   const dateStr=DOW[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear();
-  const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'pt',format:'a4'});
   const W=doc.internal.pageSize.getWidth(),M=40;let y=M;
   // Header
@@ -479,10 +480,15 @@ function downloadShiftSummary(){
   // Footer
   const pages=doc.internal.getNumberOfPages();
   for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(9);doc.setTextColor(180);doc.text('ShiftLedger · Generated '+new Date().toLocaleString(),M,doc.internal.pageSize.getHeight()-20)}
-  doc.save('ShiftLedger-'+waiter.replace(/\s+/g,'-')+'-'+today+'.pdf');
+  const name='SlipSync-Shift-'+waiter.replace(/\s+/g,'-')+'-'+today+'.pdf';
+  const file=new File([doc.output('blob')],name,{type:'application/pdf'});
+  const outcome=await SlipSyncPDF.shareOrDownload(file,{title:name,text:'SlipSync Shift summary for '+dateStr});
+  if(outcome==='downloaded')alert('PDF downloaded. Attach it in WhatsApp or email.');
   } catch(error) {
     console.error('Shift PDF export failed:',error);
-    alert('Could not generate the PDF: '+(error && error.message ? error.message : 'Unknown error')+'\nPlease retry in your browser.');
+    alert('Could not generate the PDF: '+(error && error.message ? error.message : 'Unknown error')+'\nTap the PDF button to retry.');
+  } finally {
+    if(button){button.disabled=false;button.textContent='Share shift summary (PDF)'}
   }
 }
 
