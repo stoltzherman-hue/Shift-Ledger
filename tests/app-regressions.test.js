@@ -15,8 +15,8 @@ function suiteState() {
     home: { cfg: { income: 0, members: 'Me' }, cats: [], tx: [] },
     cur: {
       cfg: { client: 'Fictional Client', email: '', wa: '082 123 4567', float: 1000, me: 'Test User' },
-      cats: [],
-      tx: [],
+      cats: [{ id: 'food', name: 'Food "Basics"', limit: 1000, type: 'must' }],
+      tx: [{ id: 'synthetic', date: new Date().toISOString().slice(0, 10), store: 'Fictional, Store', cat: 'food', type: 'must', who: 'Test User', amt: 123.45, litres: '', note: 'quoted "note"' }],
     },
     road: {
       cfg: { mode: 'allowance', allowance: 0, rate: 4.95, name: '', company: '', mgr: '', email: '', wa: '', home: '' },
@@ -102,5 +102,8 @@ test('CSV export downloads a synthetic Curator ledger without external transmiss
 
   assert.deepEqual(downloads, [{ href: 'blob:synthetic-export', download: `SlipSync-cur-${new Date().toISOString().slice(0, 7)}.csv` }]);
   assert.equal(context.__lastFile.type, 'text/csv');
-  assert.match(context.__lastFile.parts[0], /^"Date","Store","Category","Priority","Who","Amount","Litres","Note"$/);
+  assert.equal(context.__lastFile.parts[0], [
+    '"Date","Store","Category","Priority","Who","Amount","Litres","Note"',
+    `"${new Date().toISOString().slice(0, 10)}","Fictional, Store","Food ""Basics""","must","Test User","123.45","","quoted ""note"""`,
+  ].join('\n'));
 });
