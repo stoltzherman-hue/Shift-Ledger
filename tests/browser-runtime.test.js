@@ -147,6 +147,17 @@ test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths
       { firstOpen: true, firstClosed: true, reopened: true, finalClosed: true });
   });
 
+  await t.test('Road picker replacement dialog saves exactly one expense', async () => {
+    await evaluate(client, `document.querySelector('.mods button[data-m="road"]').click();document.querySelector('#fab').click();document.querySelector('[data-pick="slip"]').click()`);
+    await waitFor(client, `document.querySelector('#dlg').open && document.querySelector('#dlgBody h3')?.textContent==='Add a road expense'`);
+    const result = await evaluate(client, `(async () => {
+      const before=S.road.tx.length;document.querySelector('#dlgBody [name="amt"]').value='55';document.querySelector('#dlgBody [name="store"]').value='Synthetic Road Store';
+      document.querySelector('#dlgBody button.pri').click();await new Promise(resolve=>setTimeout(resolve,0));return{before,after:S.road.tx.length,dialogOpen:document.querySelector('#dlg').open};
+    })()`);
+    assert.deepEqual(result, { before: 0, after: 1, dialogOpen: false });
+    await evaluate(client, `document.querySelector('.mods button[data-m="cur"]').click()`);
+  });
+
   await t.test('delayed photo reads cannot duplicate saves or commit after cancel and reopen', async () => {
     const result = await evaluate(client, `(async () => {
       const originalReadImg=readImg,photo='data:image/jpeg;base64,SYNTHETIC_DELAYED';

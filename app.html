@@ -237,7 +237,7 @@ function onboard(){
  <div class="btns"><button class="btn pri" style="flex:1">Start my free 14 days</button></div><div class="btns"><button type="button" class="btn" id="obPin" style="flex:1">I already have a PIN</button></div>`,()=>{
   if(!sel.size){toast('Pick at least one');return false}
   A.picked=[...sel];A.trialStart=A.trialStart||Date.now();S.ui.mod=A.picked[0]==='shift'?(A.picked[1]||'home'):A.picked[0];toast('Trial started — 14 days of everything')});
- body.onclick=e=>{if(e.target.id==='obPin'){dlg.close();return pinDialog()}const b=e.target.closest('.pick');if(!b)return;const k=b.dataset.k;sel.has(k)?sel.delete(k):sel.add(k);b.setAttribute('aria-pressed',sel.has(k))};
+ body.onclick=e=>{if(e.target.id==='obPin'){closeDialog();return pinDialog()}const b=e.target.closest('.pick');if(!b)return;const k=b.dataset.k;sel.has(k)?sel.delete(k):sel.add(k);b.setAttribute('aria-pressed',sel.has(k))};
 }
 function paywall(){
  let sel=new Set(A.mods.length?A.mods:A.picked),annual=A.annual;
@@ -257,7 +257,7 @@ function paywall(){
   const url='/api/subscribe?modules='+mods.join(',')+'&billing='+(annual?'annual':'monthly')+'&name='+encodeURIComponent(A.name||S.road.cfg.name||S.cur.cfg.me||'SlipSync user');
   A.annual=annual;save();location.href=url;return false});
  draw();
- $('#havePin').onclick=()=>{dlg.close();pinDialog()};
+ $('#havePin').onclick=()=>{closeDialog();pinDialog()};
  body.onclick=e=>{const b=e.target.closest('.pick');if(!b)return;const k=b.dataset.k;sel.has(k)?sel.delete(k):sel.add(k);b.setAttribute('aria-pressed',sel.has(k));draw()};
  body.querySelector('[data-seg=bill]').addEventListener('change',e=>{annual=e.currentTarget.querySelector('input').value==='y';draw()});
  dlg.oncancel=e=>{if(expired)e.preventDefault()};
@@ -274,7 +274,7 @@ function pinDialog(msg){
  <p class="hint">Your PIN is emailed from hello@slipsync.africa after payment. Check spam if it hasn’t arrived.</p>`,f=>{
   const pin=String(f.get('pin')).trim();
   fetch('/api/activate?pin='+encodeURIComponent(pin)).then(r=>r.json()).then(j=>{
-   if(j.valid){A.plan=j.plan;A.mods=j.modules;A.pin=pin;A.name=j.name;save();syncShiftGate();dlg.close();render();toast('Unlocked — welcome'+(j.name&&j.name!=='Owner'?', '+j.name:''))}
+   if(j.valid){A.plan=j.plan;A.mods=j.modules;A.pin=pin;A.name=j.name;save();syncShiftGate();closeDialog();render();toast('Unlocked — welcome'+(j.name&&j.name!=='Owner'?', '+j.name:''))}
    else toast(j.error||'That PIN didn’t work')}).catch(()=>toast('No connection — try again'));
   return false});
 }
@@ -340,8 +340,9 @@ function viewRoad(){
 /* ============ DIALOGS ============ */
 const dlg=$('#dlg'),body=$('#dlgBody');
 let dialogGeneration=0;
-dlg.addEventListener('close',()=>{dialogGeneration++});
-function openDialog(html,onSubmit){const generation=++dialogGeneration;body.innerHTML=html;body.onclick=null;dlg.oncancel=null;dlg.showModal();body.onsubmit=e=>{if(e.submitter&&e.submitter.value==='cancel')return;e.preventDefault();if(onSubmit(new FormData(body),e.submitter)!==false){dlg.close();save();render()}};return generation}
+function closeDialog(){dialogGeneration++;dlg.close()}
+dlg.addEventListener('cancel',e=>{const generation=dialogGeneration;queueMicrotask(()=>{if(!e.defaultPrevented&&dialogGeneration===generation)dialogGeneration++})});
+function openDialog(html,onSubmit){const generation=++dialogGeneration;body.innerHTML=html;body.onclick=null;dlg.oncancel=null;dlg.showModal();body.onsubmit=e=>{if(e.submitter&&e.submitter.value==='cancel'){dialogGeneration++;return}e.preventDefault();if(onSubmit(new FormData(body),e.submitter)!==false){closeDialog();save();render()}};return generation}
 function segHTML(name,opts,val){return `<div class="seg" data-seg="${name}">${opts.map(([v,l])=>`<button type="button" data-v="${v}" class="${v===val?'on':''}">${l}</button>`).join('')}<input type="hidden" name="${name}" value="${val}"></div>`}
 body.addEventListener('click',e=>{const b=e.target.closest('.seg button');if(!b)return;const seg=b.parentElement;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));seg.querySelector('input').value=b.dataset.v;seg.dispatchEvent(new Event('change',{bubbles:true}))});
 const today=()=>new Date().toISOString().slice(0,10);
@@ -376,7 +377,7 @@ function addSlip(mod,kind='slip'){
   saving=true;if(submitter)submitter.disabled=true;
   const t={id:uid(),amt,store:f.get('store'),cat:f.get('cat'),date:f.get('date'),note:f.get('note'),who:f.get('who')||'',litres:parseFloat(String(f.get('litres')||'').replace(',','.'))||0};
   if(mod==='road')t.reimb=f.get('reimb')==='1';else t.type=f.get('type');
-  const file=f.get('img');readImg(file&&file.size?file:null).then(img=>{if(dialogGeneration!==operation)return;t.img=img;S[mod].tx.push(t);if(!save()){S[mod].tx.pop();saving=false;if(submitter)submitter.disabled=false;alert('SlipSync could not save this slip because browser storage is full or unavailable. Existing saved slips and photos were not changed. Export a backup and free space safely, then retry.');return}dlg.close();render();toast('Slip saved')}).catch(error=>{if(dialogGeneration!==operation)return;saving=false;if(submitter)submitter.disabled=false;toast(error.message)});return false;
+  const file=f.get('img');readImg(file&&file.size?file:null).then(img=>{if(dialogGeneration!==operation)return;t.img=img;S[mod].tx.push(t);if(!save()){S[mod].tx.pop();saving=false;if(submitter)submitter.disabled=false;alert('SlipSync could not save this slip because browser storage is full or unavailable. Existing saved slips and photos were not changed. Export a backup and free space safely, then retry.');return}closeDialog();render();toast('Slip saved')}).catch(error=>{if(dialogGeneration!==operation)return;saving=false;if(submitter)submitter.disabled=false;toast(error.message)});return false;
  });
  const fs=$('#fStore'),fc=$('#fCat'),fb=$('#fuelBox');
  const syncFuel=()=>{fb.hidden=!/fuel/i.test(fc.options[fc.selectedIndex].text)};
@@ -384,7 +385,7 @@ function addSlip(mod,kind='slip'){
  fs.addEventListener('input',()=>{const g=guessCat(fs.value,cats);if(g){fc.value=g.id;syncType();syncFuel()}});
  fc.addEventListener('change',()=>{syncType();syncFuel()});syncFuel();
 }
-body.addEventListener('click',e=>{const p=e.target.closest('[data-pick]');if(p){dlg.close();addSlip('road',p.dataset.pick)}});
+body.addEventListener('click',e=>{const p=e.target.closest('[data-pick]');if(p){closeDialog();addSlip('road',p.dataset.pick)}});
 
 function setup(mod){
  const D=S[mod];
