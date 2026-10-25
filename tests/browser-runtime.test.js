@@ -1,0 +1,243 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+const cdpBase = process.env.SLIPSYNC_CDP_URL;
+const appBase = process.env.SLIPSYNC_APP_URL || 'http://127.0.0.1:4175';
+const downloadRoot = process.env.SLIPSYNC_DOWNLOAD_DIR || path.join(process.env.TEMP || '.', 'slipsync-browser-downloads');
+
+class CdpClient {
+  constructor(url) {
+    this.nextId = 1;
+    this.pending = new Map();
+    this.listeners = new Map();
+    this.socket = new WebSocket(url);
+    this.ready = new Promise((resolve, reject) => {
+      this.socket.addEventListener('open', resolve, { once: true });
+      this.socket.addEventListener('error', reject, { once: true });
+    });
+    this.socket.addEventListener('message', (event) => {
+      const message = JSON.parse(event.data);
+      if (message.id) {
+        const waiter = this.pending.get(message.id);
+        if (!waiter) return;
+        this.pending.delete(message.id);
+        if (message.error) waiter.reject(new Error(message.error.message));
+        else waiter.resolve(message.result);
+        return;
+      }
+      const callbacks = this.listeners.get(message.method) || [];
+      callbacks.slice().forEach((callback) => callback(message.params));
+    });
+  }
+
+  async send(method, params = {}) {
+    await this.ready;
+    const id = this.nextId++;
+    const response = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    this.socket.send(JSON.stringify({ id, method, params }));
+    return response;
+  }
+
+  once(method, predicate = () => true, timeoutMs = 10000) {
+    return new Promise((resolve, reject) => {
+      const callback = (params) => {
+        if (!predicate(params)) return;
+        clearTimeout(timer);
+        this.listeners.set(method, (this.listeners.get(method) || []).filter((item) => item !== callback));
+        resolve(params);
+      };
+      this.listeners.set(method, [...(this.listeners.get(method) || []), callback]);
+      const timer = setTimeout(() => {
+        this.listeners.set(method, (this.listeners.get(method) || []).filter((item) => item !== callback));
+        reject(new Error(`Timed out waiting for CDP event ${method}`));
+      }, timeoutMs);
+    });
+  }
+
+  close() { this.socket.close(); }
+}
+
+async function evaluate(client, expression) {
+  const result = await client.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+  return result.result.value;
+}
+
+async function waitFor(client, expression, timeoutMs = 10000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await evaluate(client, expression)) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Timed out waiting for: ${expression}`);
+}
+
+async function navigate(client, url) {
+  const loaded = client.once('Page.loadEventFired');
+  await client.send('Page.navigate', { url });
+  await loaded;
+}
+
+async function nextDownload(client, downloadDir, action) {
+  const began = client.once('Browser.downloadWillBegin');
+  try { await action(); }
+  catch (error) { began.catch(() => {}); throw error; }
+  const download = await began;
+  const completed = await client.once('Browser.downloadProgress', (event) => event.guid === download.guid && event.state === 'completed');
+  return { ...download, path: completed.filePath || path.join(downloadDir, download.suggestedFilename) };
+}
+
+test('real Chrome exercises SlipSync UI, persistence, exports, and failure paths', { skip: !cdpBase }, async (t) => {
+  fs.mkdirSync(downloadRoot, { recursive: true });
+  const downloadDir = fs.mkdtempSync(path.join(downloadRoot, 'run-'));
+  const targets = await (await fetch(`${cdpBase}/json/list`)).json();
+  assert.ok(targets[0]?.webSocketDebuggerUrl, 'Chrome should expose a debuggable page');
+  const client = new CdpClient(targets[0].webSocketDebuggerUrl);
+  t.after(() => client.close());
+  await client.send('Page.enable');
+  await client.send('Runtime.enable');
+  await client.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloadDir, eventsEnabled: true });
+
+  const suiteState = {
+    home: {
+      cfg: { income: 1000, members: 'Test User' },
+      cats: [{ id: 'food', name: 'Food "Basics"', limit: 1000, type: 'must' }],
+      tx: [{ id: 'synthetic', date: new Date().toISOString().slice(0, 10), store: 'Fictional, Store', cat: 'food', type: 'must', who: 'Test User', amt: 123.45, litres: '', note: 'quoted "note"' }],
+    },
+    cur: { cfg: { client: 'Fictional Client', email: '', wa: '082 123 4567', float: 1000, me: 'Test User' }, cats: [], tx: [] },
+    road: { cfg: { mode: 'allowance', allowance: 0, rate: 4.95, name: '', company: '', mgr: '', email: '', wa: '', home: '' }, tx: [], trips: [] },
+    ui: { mod: 'cur' },
+    acct: { picked: ['cur'], trialStart: Date.now(), plan: 'all', mods: ['home', 'cur', 'road', 'shift'], annual: false },
+  };
+  await navigate(client, `${appBase}/`);
+  await evaluate(client, `localStorage.removeItem('slipsync.suite.v1');sessionStorage.removeItem('__slipsyncRuntimeSeeded')`);
+  await client.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+    if (!sessionStorage.getItem('__slipsyncRuntimeSeeded')) {
+      localStorage.setItem('slipsync.suite.v1', ${JSON.stringify(JSON.stringify(suiteState))});
+      sessionStorage.setItem('__slipsyncRuntimeSeeded','1');
+    }
+    window.__opened = [];
+    window.__alerts = [];
+    window.open = (...args) => { window.__opened.push(args); return null; };
+    window.alert = (message) => window.__alerts.push(String(message));
+  ` });
+
+  await t.test('repeated WhatsApp clicks use intercepted native opening and dialogs still reopen', async () => {
+    await navigate(client, `${appBase}/app`);
+    const result = await evaluate(client, `(() => {
+      const send = document.querySelector('[data-act="send-wa"]');
+      send.click(); send.click();
+      const setup = document.querySelector('[data-act="setup"]');
+      setup.click(); const firstOpen = document.querySelector('#dlg').open;
+      document.querySelector('#dlg button[value="cancel"]').click(); const firstClosed = !document.querySelector('#dlg').open;
+      setup.click(); const reopened = document.querySelector('#dlg').open;
+      document.querySelector('#dlg button[value="cancel"]').click();
+      return { calls: window.__opened, firstOpen, firstClosed, reopened, finalClosed: !document.querySelector('#dlg').open };
+    })()`);
+    assert.equal(result.calls.length, 2);
+    result.calls.forEach(([url, target]) => {
+      assert.match(url, /^https:\/\/wa\.me\/27821234567\?text=/);
+      assert.equal(target, '_blank');
+    });
+    assert.deepEqual({ firstOpen: result.firstOpen, firstClosed: result.firstClosed, reopened: result.reopened, finalClosed: result.finalClosed },
+      { firstOpen: true, firstClosed: true, reopened: true, finalClosed: true });
+  });
+
+  await t.test('CSV export uses a real browser download', async () => {
+    await evaluate(client, `document.querySelector('.mods button[data-m="home"]').click()`);
+    await evaluate(client, `Object.defineProperty(navigator,'canShare',{value:()=>false,configurable:true})`);
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, `document.querySelector('[data-act="csv"]').click()`));
+    assert.match(download.suggestedFilename, /^SlipSync-home-\d{4}-\d{2}\.csv$/);
+    const csv = fs.readFileSync(download.path, 'utf8');
+    assert.equal(csv, [
+      '"Date","Store","Category","Priority","Who","Amount","Litres","Note"',
+      `"${new Date().toISOString().slice(0, 10)}","Fictional, Store","Food ""Basics""","must","Test User","123.45","","quoted ""note"""`,
+    ].join('\n'));
+  });
+
+  await t.test('module link and browser Back preserve synthetic suite data', async () => {
+    await evaluate(client, `document.querySelector('.mods button[data-m="shift"]').click();document.querySelector('a[href="/shift"]').click()`);
+    await waitFor(client, `location.pathname === '/shift'`);
+    await evaluate(client, 'history.back()');
+    await waitFor(client, `location.pathname === '/app'`);
+    assert.equal(await evaluate(client, `JSON.parse(localStorage.getItem('slipsync.suite.v1')).cur.cfg.client`), 'Fictional Client');
+  });
+
+  const today = new Date();
+  const slips = [
+    { id: 101, ts: today.getTime(), bill: 100, tip: 10, pay: 'card', table: '1', suggPct: null, suggAmt: null, img: null },
+    { id: 102, ts: today.getTime() + 1, bill: 200, tip: 25, pay: 'cash', table: '2', suggPct: null, suggAmt: null, img: null },
+  ];
+  await navigate(client, `${appBase}/shift`);
+  await evaluate(client, `(() => {
+    const canvas=document.createElement('canvas');canvas.width=80;canvas.height=120;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,80,120);ctx.fillStyle='#111';ctx.fillText('SYNTHETIC',5,40);
+    const imageOne=canvas.toDataURL('image/jpeg',0.8);
+    ctx.fillStyle='#f5c542';ctx.fillRect(0,0,80,120);ctx.fillStyle='#111';ctx.fillText('SECOND',5,70);
+    const imageTwo=canvas.toDataURL('image/jpeg',0.8);
+    const records=${JSON.stringify(slips)};records[0].img=imageOne;records[1].img=imageTwo;
+    localStorage.setItem('shiftledger.slips.v1',JSON.stringify(records));localStorage.setItem('shiftledger.cfg.v1',JSON.stringify({cur:'R',waiterName:'Test Waiter'}));
+  })()`);
+  await navigate(client, `${appBase}/shift`);
+
+  await t.test('synthetic photos persist across reload and render when a slip reopens', async () => {
+    assert.equal(await evaluate(client, `JSON.parse(localStorage.getItem('shiftledger.slips.v1')).filter(x=>x.img&&x.img.startsWith('data:image/')).length`), 2);
+    const display = await evaluate(client, `(() => { openSlip(101); const w=document.querySelector('#slipThumbWrap'); return {shown:w.style.display,src:document.querySelector('#slipThumb').src.slice(0,22)} })()`);
+    assert.equal(display.shown, 'block');
+    assert.match(display.src, /^data:image\/jpeg;base64/);
+    await evaluate(client, 'closeSlip()');
+  });
+
+  await t.test('quota failure preserves stored photos, rolls back the slip, and keeps unsaved form visible', async () => {
+    const result = await evaluate(client, `(() => {
+      const before=localStorage.getItem('shiftledger.slips.v1');openSlip();
+      document.querySelector('#fBill').value='333';document.querySelector('#fTip').value='33';document.querySelector('#fTable').value='9';
+      curImg='data:image/jpeg;base64,UNSAVED';
+      const original=Storage.prototype.setItem;
+      Storage.prototype.setItem=function(key,value){if(key==='shiftledger.slips.v1')throw new DOMException('full','QuotaExceededError');return original.call(this,key,value)};
+      saveSlip();Storage.prototype.setItem=original;
+      return {same:localStorage.getItem('shiftledger.slips.v1')===before,count:slips.length,sheet:document.querySelector('#slipSheet').classList.contains('open'),bill:document.querySelector('#fBill').value,alert:window.__alerts.at(-1)};
+    })()`);
+    assert.deepEqual(result, { same: true, count: 2, sheet: true, bill: '333', alert: 'Shift could not save your latest changes because browser storage is full or unavailable. Existing saved slip photos have NOT been deleted. Export a backup from Settings and free storage safely before adding more slips.' });
+    await evaluate(client, 'closeSlip()');
+  });
+
+  await t.test('real jsPDF creates a multi-photo PDF with image objects and pages', async () => {
+    await waitFor(client, `Boolean(window.jspdf && window.jspdf.jsPDF)`, 15000);
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, 'downloadShiftSummary()'));
+    const pdf = fs.readFileSync(download.path);
+    const text = pdf.toString('latin1');
+    assert.equal((text.match(/\/Type \/Page\b/g) || []).length, 3);
+    assert.ok((text.match(/\/Subtype \/Image\b/g) || []).length >= 2);
+    assert.ok(pdf.length > 3000);
+  });
+
+  await t.test('missing-photo PDF adds an availability page and empty slip hides the thumbnail', async () => {
+    await evaluate(client, `(() => {const records=JSON.parse(localStorage.getItem('shiftledger.slips.v1'));records[1].img=null;localStorage.setItem('shiftledger.slips.v1',JSON.stringify(records));location.reload()})()`);
+    await waitFor(client, `document.readyState === 'complete' && typeof downloadShiftSummary === 'function'`);
+    const hidden = await evaluate(client, `(() => {openSlip(102);return document.querySelector('#slipThumbWrap').style.display})()`);
+    assert.equal(hidden, 'none');
+    await evaluate(client, 'closeSlip()');
+    const download = await nextDownload(client, downloadDir, () => evaluate(client, 'downloadShiftSummary()'));
+    const text = fs.readFileSync(download.path).toString('latin1');
+    assert.equal((text.match(/\/Type \/Page\b/g) || []).length, 3);
+    assert.equal((text.match(/\/Subtype \/Image\b/g) || []).length, 1);
+    assert.match(text, /Slip photo availability/);
+  });
+
+  await t.test('jsPDF failure is reported and the CDN error handler injects the fallback source', async () => {
+    const result = await evaluate(client, `(() => {
+      window.__alerts=[];const saved=window.jspdf;window.jspdf=undefined;downloadShiftSummary();window.jspdf=saved;
+      const primary=[...document.scripts].find(s=>s.src.includes('cdn.jsdelivr.net/npm/jspdf'));
+      primary.onerror();
+      return {alert:window.__alerts[0],fallback:[...document.scripts].some(s=>s.src.includes('unpkg.com/jspdf@2.5.2'))};
+    })()`);
+    assert.match(result.alert, /^Could not generate the PDF: PDF library did not load/);
+    assert.equal(result.fallback, true);
+  });
+
+  const screenshot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.writeFileSync(path.join(downloadDir, 'slipsync-synthetic-runtime.png'), Buffer.from(screenshot.data, 'base64'));
+});
