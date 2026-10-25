@@ -230,7 +230,7 @@ function planFor(n){return n>=3?'all':n}
 function priceFor(n,annual){const p=PRICE[planFor(n)]||0;return annual?p*10:p}
 function onboard(){
  let sel=new Set(A.picked.length?A.picked:[]);
- open(`<h3>What do you need SlipSync for?</h3><p class="hint" style="margin:-6px 0 14px">Pick everything that fits. You can change it later.</p>
+ openDialog(`<h3>What do you need SlipSync for?</h3><p class="hint" style="margin:-6px 0 14px">Pick everything that fits. You can change it later.</p>
  ${Object.entries(MODS).map(([k,[n,d]])=>`<button type="button" class="pick" data-k="${k}" aria-pressed="${sel.has(k)}"><strong>${n}</strong><span>${d}</span></button>`).join('')}
  <p class="nudge">Your first 14 days unlock <b>all four modules</b> free. No card needed.</p>
  <div class="btns"><button class="btn pri" style="flex:1">Start my free 14 days</button></div><div class="btns"><button type="button" class="btn" id="obPin" style="flex:1">I already have a PIN</button></div>`,()=>{
@@ -245,7 +245,7 @@ function paywall(){
   ${n?`<div class="price"><span class="big num">R${p}</span><span>/${annual?'year':'month'}</span></div>${full>p?`<p class="save">You save R${full-p} ${annual?'a year':'a month'}</p>`:''}`:'<p class="empty">Pick at least one module.</p>'}
   ${n===2?`<p class="nudge">For R20 more you get all four. Most people take All-Access.</p>`:''}${n===3?`<p class="nudge">Three modules costs the same as all four, so we’ve given you All-Access.</p>`:''}`};
  const expired=!A.plan&&trialLeft()===0;
- open(`<h3>${expired?'Your free trial has ended':'Choose your plan'}</h3>${expired?'<p class="hint" style="margin:-6px 0 12px">Your slips and history are safe on this phone. Pick a plan to carry on.</p>':''}
+ openDialog(`<h3>${expired?'Your free trial has ended':'Choose your plan'}</h3>${expired?'<p class="hint" style="margin:-6px 0 12px">Your slips and history are safe on this phone. Pick a plan to carry on.</p>':''}
  ${Object.entries(MODS).map(([k,[n,d]])=>`<button type="button" class="pick" data-k="${k}" aria-pressed="${sel.has(k)}"><strong>${n}</strong><span>${d}</span></button>`).join('')}
  <label>Billing</label>${segHTML('bill',[['m','Monthly'],['y','Yearly — 2 months free']],annual?'y':'m')}
  <div id="pw"></div>
@@ -267,7 +267,7 @@ const SHIFT_PIN='shiftledger.pin.v1';
 try{if(!A.plan&&localStorage.getItem(SHIFT_PIN)==='ACTIVE'&&!A.trialStart){A.plan='all';A.mods=Object.keys(MODS);A.legacy=true}}catch(e){}
 function syncShiftGate(){try{access().includes('shift')?localStorage.setItem(SHIFT_PIN,'ACTIVE'):(A.legacy||localStorage.removeItem(SHIFT_PIN))}catch(e){}}
 function pinDialog(msg){
- open(`<h3>Enter your PIN</h3>${msg?`<p class="hint" style="margin:-6px 0 12px">${msg}</p>`:''}
+ openDialog(`<h3>Enter your PIN</h3>${msg?`<p class="hint" style="margin:-6px 0 12px">${msg}</p>`:''}
  <input name="pin" class="amt" inputmode="numeric" maxlength="6" pattern="\\d{6}" placeholder="••••••" required autocomplete="one-time-code">
  <div class="btns"><button class="btn pri" style="flex:1">Unlock</button><button class="btn" value="cancel">Cancel</button></div>
  <p class="hint">Your PIN is emailed from hello@slipsync.africa after payment. Check spam if it hasn’t arrived.</p>`,f=>{
@@ -338,16 +338,16 @@ function viewRoad(){
 
 /* ============ DIALOGS ============ */
 const dlg=$('#dlg'),body=$('#dlgBody');
-function open(html,onSubmit){body.innerHTML=html;body.onclick=null;dlg.oncancel=null;dlg.showModal();body.onsubmit=e=>{if(e.submitter&&e.submitter.value==='cancel')return;e.preventDefault();if(onSubmit(new FormData(body))!==false){dlg.close();save();render()}}}
+function openDialog(html,onSubmit){body.innerHTML=html;body.onclick=null;dlg.oncancel=null;dlg.showModal();body.onsubmit=e=>{if(e.submitter&&e.submitter.value==='cancel')return;e.preventDefault();if(onSubmit(new FormData(body))!==false){dlg.close();save();render()}}}
 function segHTML(name,opts,val){return `<div class="seg" data-seg="${name}">${opts.map(([v,l])=>`<button type="button" data-v="${v}" class="${v===val?'on':''}">${l}</button>`).join('')}<input type="hidden" name="${name}" value="${val}"></div>`}
 body.addEventListener('click',e=>{const b=e.target.closest('.seg button');if(!b)return;const seg=b.parentElement;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));seg.querySelector('input').value=b.dataset.v;seg.dispatchEvent(new Event('change',{bubbles:true}))});
 const today=()=>new Date().toISOString().slice(0,10);
 function defDate(){return inMonth(today())?today():MONTH+'-01'}
 
 function addSlip(mod,kind='slip'){
- if(mod==='road'&&kind==='pick')return open(`<h3>What are you logging?</h3><div class="btns"><button class="btn pri" type="button" data-pick="slip">Expense slip</button><button class="btn pri" type="button" data-pick="trip">Business trip</button></div><div class="btns"><button class="btn" value="cancel">Cancel</button></div>`,()=>{});
+ if(mod==='road'&&kind==='pick')return openDialog(`<h3>What are you logging?</h3><div class="btns"><button class="btn pri" type="button" data-pick="slip">Expense slip</button><button class="btn pri" type="button" data-pick="trip">Business trip</button></div><div class="btns"><button class="btn" value="cancel">Cancel</button></div>`,()=>{});
  if(mod==='road'&&kind==='trip'){const last=S.road.trips.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
-  return open(`<h3>Log a business trip</h3><label>Date</label><input type="date" name="date" value="${defDate()}" required>
+  return openDialog(`<h3>Log a business trip</h3><label>Date</label><input type="date" name="date" value="${defDate()}" required>
   <div class="two"><div><label>From</label><input name="from" value="${esc(last?last.to:S.road.cfg.home)}" placeholder="Office, Sandton"></div><div><label>To</label><input name="to" required placeholder="Client site"></div></div>
   <label>Business reason</label><input name="purpose" required placeholder="Quarterly review with Acme">
   <div class="two"><div><label>Odometer start</label><input name="o1" inputmode="numeric" class="num" value="${last&&last.o2?last.o2:''}"></div><div><label>Odometer end</label><input name="o2" inputmode="numeric" class="num"></div></div>
@@ -358,7 +358,7 @@ function addSlip(mod,kind='slip'){
    S.road.trips.push({id:uid(),date:f.get('date'),from:f.get('from'),to:f.get('to'),purpose:f.get('purpose'),o1:o1||'',o2:o2||'',km});toast('Trip logged')})}
  const D=S[mod],cats=mod==='road'?ROADCATS.map(n=>({id:n,name:n,type:'must'})):D.cats;
  const who=mod==='home'?`<label>Who spent it</label><select name="who">${(D.cfg.members||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>`<option>${esc(x)}</option>`).join('')}</select>`:'';
- open(`<h3>${mod==='road'?'Add a road expense':'Add a slip'}</h3>
+ openDialog(`<h3>${mod==='road'?'Add a road expense':'Add a slip'}</h3>
  <label>Amount</label><input name="amt" class="amt" inputmode="decimal" required placeholder="0,00" autofocus>
  <label>Store or supplier</label><input name="store" id="fStore" placeholder="Checkers, Engen, SANRAL…" autocomplete="off">
  <div class="two"><div><label>Category</label><select name="cat" id="fCat">${cats.map(c=>`<option value="${c.id}" data-type="${c.type}">${esc(c.name)}</option>`).join('')}</select></div><div><label>Date</label><input type="date" name="date" value="${defDate()}" required></div></div>
@@ -382,7 +382,7 @@ body.addEventListener('click',e=>{const p=e.target.closest('[data-pick]');if(p){
 
 function setup(mod){
  const D=S[mod];
- if(mod==='road'){const c=D.cfg;return open(`<h3>Allowance & manager</h3>
+ if(mod==='road'){const c=D.cfg;return openDialog(`<h3>Allowance & manager</h3>
   <label>How are you paid for travel?</label>${segHTML('mode',[['allowance','Monthly allowance'],['reimb','Claim per km + expenses']],c.mode)}
   <label>Monthly allowance (R)</label><input name="allowance" class="num" inputmode="decimal" value="${c.allowance}">
   <label>Rate per km (R)</label><input name="rate" class="num" inputmode="decimal" value="${c.rate}"><p class="hint">SARS prescribed rate for 1 March 2026 – 28 February 2027 is R4,95/km. Anything your employer pays above that is taxable.</p>
@@ -392,7 +392,7 @@ function setup(mod){
   <div class="two"><div><label>Their email</label><input type="email" name="email" value="${esc(c.email)}"></div><div><label>Their WhatsApp</label><input name="wa" inputmode="tel" value="${esc(c.wa)}" placeholder="082 123 4567"></div></div>
   <div class="btns"><button class="btn pri">Save</button><button class="btn" value="cancel">Cancel</button></div>`,f=>{for(const k of ['mode','name','company','home','mgr','email','wa'])c[k]=f.get(k);c.allowance=+String(f.get('allowance')).replace(',','.')||0;c.rate=+String(f.get('rate')).replace(',','.')||RATE_KM;toast('Saved')})}
  const c=D.cfg,rows=cats=>cats.map(k=>`<div class="catrow" data-id="${k.id}"><input value="${esc(k.name)}" aria-label="Envelope name"><input class="num" inputmode="decimal" value="${k.limit}" aria-label="Limit"><select aria-label="Priority"><option value="must" ${k.type==='must'?'selected':''}>Must</option><option value="nice" ${k.type==='nice'?'selected':''}>Nice</option></select><button type="button" class="del" data-rm aria-label="Remove">✕</button></div>`).join('');
- open(`<h3>${mod==='cur'?'Client & float':'Budget & envelopes'}</h3>
+ openDialog(`<h3>${mod==='cur'?'Client & float':'Budget & envelopes'}</h3>
  ${mod==='cur'?`<div class="two"><div><label>Client name</label><input name="client" value="${esc(c.client)}" placeholder="Mrs Botha"></div><div><label>Your name</label><input name="me" value="${esc(c.me)}"></div></div>
   <label>Monthly float from client (R)</label><input name="float" class="num" inputmode="decimal" value="${c.float}">
   <div class="two"><div><label>Client email</label><input type="email" name="email" value="${esc(c.email)}"></div><div><label>Client WhatsApp</label><input name="wa" inputmode="tel" value="${esc(c.wa)}" placeholder="082 123 4567"></div></div>`
