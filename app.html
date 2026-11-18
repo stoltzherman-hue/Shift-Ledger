@@ -243,7 +243,7 @@ function onboard(){
  openDialog(`<h3>What do you need SlipSync for?</h3><p class="hint" style="margin:-6px 0 14px">Pick everything that fits. You can change it later.</p>
  ${Object.entries(MODS).map(([k,[n,d]])=>`<button type="button" class="pick" data-k="${k}" aria-pressed="${sel.has(k)}"><strong>${n}</strong><span>${d}</span></button>`).join('')}
  <p class="nudge">Your first 14 days unlock <b>all four modules</b> free. No card needed.</p>
- <div class="btns"><button class="btn pri" style="flex:1">Start my free 14 days</button></div><div class="btns"><button type="button" class="btn" id="obPin" style="flex:1">I already have a PIN</button></div>`,()=>{
+ <div class="btns"><button class="btn pri" style="flex:1">Start my free 14 days</button></div><div class="btns"><button type="button" class="btn" id="obPin" style="flex:1">I already have a PIN</button></div><p style="font-size:14px;line-height:1.5;margin:14px 0 0"><a href="https://wa.me/27762556213" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:700">Chat with SlipSync AI on WhatsApp ↗</a><br><a href="https://slipsync-whatsapp-privacy.stoltzherman.chatgpt.site" target="_blank" rel="noopener noreferrer" style="color:inherit">AI chat privacy notice</a></p>`,()=>{
   if(!sel.size){toast('Pick at least one');return false}
   A.picked=[...sel];A.trialStart=A.trialStart||Date.now();S.ui.mod=A.picked[0]==='shift'?(A.picked[1]||'home'):A.picked[0];toast('Trial started — 14 days of everything')});
  body.onclick=e=>{if(e.target.id==='obPin'){closeDialog();return pinDialog()}const b=e.target.closest('.pick');if(!b)return;const k=b.dataset.k;sel.has(k)?sel.delete(k):sel.add(k);b.setAttribute('aria-pressed',sel.has(k))};
@@ -260,7 +260,7 @@ function paywall(){
  <label>Billing</label>${segHTML('bill',[['m','Monthly'],['y','Yearly — 2 months free']],annual?'y':'m')}
  <div id="pw"></div>
  <div class="btns"><button class="btn pri" style="flex:1">Continue to PayFast</button>${expired?'':'<button class="btn" value="cancel">Not now</button>'}</div>
- <p class="hint">Secure payment via PayFast. Your PIN arrives by email from hello@slipsync.africa.</p><div class="btns"><button type="button" class="btn" id="havePin" style="flex:1">I already have a PIN</button></div>`,()=>{
+ <p class="hint">Secure payment via PayFast. Your PIN arrives by email from hello@slipsync.africa.</p><div class="btns"><button type="button" class="btn" id="havePin" style="flex:1">I already have a PIN</button></div><p style="font-size:14px;line-height:1.5;margin:14px 0 0"><a href="https://wa.me/27762556213" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:700">Chat with SlipSync AI on WhatsApp ↗</a><br><a href="https://slipsync-whatsapp-privacy.stoltzherman.chatgpt.site" target="_blank" rel="noopener noreferrer" style="color:inherit">AI chat privacy notice</a></p>`,()=>{
   const n=sel.size;if(!n){toast('Pick at least one module');return false}
   const plan=planFor(n),mods=plan==='all'?Object.keys(MODS):[...sel];
   const url='/api/subscribe?modules='+mods.join(',')+'&billing='+(annual?'annual':'monthly')+'&name='+encodeURIComponent(A.name||S.road.cfg.name||S.cur.cfg.me||'SlipSync user');
@@ -280,7 +280,7 @@ function pinDialog(msg){
  openDialog(`<h3>Enter your PIN</h3>${msg?`<p class="hint" style="margin:-6px 0 12px">${msg}</p>`:''}
  <input name="pin" class="amt" inputmode="numeric" maxlength="6" pattern="\\d{6}" placeholder="••••••" required autocomplete="one-time-code">
  <div class="btns"><button class="btn pri" style="flex:1">Unlock</button><button class="btn" value="cancel">Cancel</button></div>
- <p class="hint">Your PIN is emailed from hello@slipsync.africa after payment. Check spam if it hasn’t arrived.</p>`,f=>{
+ <p class="hint">Your PIN is emailed from hello@slipsync.africa after payment. Check spam if it hasn’t arrived.</p><p style="font-size:14px;line-height:1.5;margin:14px 0 0"><a href="https://wa.me/27762556213" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:700">Chat with SlipSync AI on WhatsApp ↗</a><br><a href="https://slipsync-whatsapp-privacy.stoltzherman.chatgpt.site" target="_blank" rel="noopener noreferrer" style="color:inherit">AI chat privacy notice</a></p>`,f=>{
   const pin=String(f.get('pin')).trim();
   fetch('/api/activate?pin='+encodeURIComponent(pin)).then(r=>r.json()).then(j=>{
    if(j.valid){A.plan=j.plan;A.mods=j.modules;A.pin=pin;A.name=j.name;save();syncShiftGate();closeDialog();render();toast('Unlocked — welcome'+(j.name&&j.name!=='Owner'?', '+j.name:''))}
